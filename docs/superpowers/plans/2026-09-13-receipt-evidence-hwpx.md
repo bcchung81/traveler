@@ -6,7 +6,7 @@
 
 **Architecture:** Python 패키지 `receipt_evidence`(src 레이아웃, uv)의 흐름은 workspace(폴더 발견) → 출장별 ingest → extract(영수증 캐시·병렬, llama-server HTTP) → validate+overrides → 배치 교차검사 → law(일자 캐시, mcp stdio) → 출장별 finalize(규칙 레지스트리·교차검사 → report → 붙임 축소 → kordoc 세션 재사용 → fingerprint 버전) → 배치 요약이다. 외부 의존(VLM·MCP)은 Protocol 뒤에 숨기고 Fake를 주입한다.
 
-**Tech Stack:** Python ≥3.12, pydantic ≥2.12, httpx, PyMuPDF, Pillow, PyYAML, mcp SDK(FastMCP 포함), pytest; llama.cpp `llama-server`(b9740); npm `kordoc` 4.13.1, `korean-law-mcp` 4.13.0.
+**Tech Stack:** Python ≥3.12, pydantic ≥2.12, httpx, PyMuPDF(`import pymupdf`), Pillow, PyYAML, mcp SDK 2.x(`MCPServer`, 결과 필드 `is_error`), pytest; llama.cpp `llama-server`(b9740); npm `kordoc` 4.13.1, `korean-law-mcp` 4.13.0.
 
 **Spec:** docs/superpowers/specs/2026-09-13-receipt-evidence-design.md (v2)
 
@@ -98,7 +98,7 @@ name = "receipt-evidence"
 version = "0.1.0"
 description = "출장여비 영수증 증빙서류 HWPX 자동화"
 requires-python = ">=3.12"
-dependencies = ["pydantic>=2.12", "httpx>=0.28", "pymupdf>=1.26", "pillow>=11", "pyyaml>=6", "mcp>=1.12"]
+dependencies = ["pydantic>=2.12", "httpx>=0.28", "pymupdf>=1.26", "pillow>=11", "pyyaml>=6", "mcp>=2.2,<3"]
 
 [project.scripts]
 receipt-evidence = "receipt_evidence.cli:main"
@@ -134,13 +134,14 @@ design/receipt-evidence-ui/receipt-evidence-screen.html
 ```bash
 uv sync && uv run pytest tests/test_smoke.py
 ```
+주의: `__init__.py`가 없는 상태로 첫 `uv sync`가 편집 설치를 빌드하면 `.pth`가 빠진 채 캐시된다 → Step 4 뒤에는 반드시 `uv sync --reinstall-package receipt-evidence`.
 기대: `ModuleNotFoundError: No module named 'receipt_evidence'` 또는 `AttributeError: module 'receipt_evidence' has no attribute '__version__'`
 - [ ] **Step 4: 최소 구현**
 ```python
 # src/receipt_evidence/__init__.py
 __version__ = "0.1.0"
 ```
-- [ ] **Step 5: 통과 확인** — `uv run pytest tests/test_smoke.py` → `1 passed`
+- [ ] **Step 5: 통과 확인** — `uv sync --reinstall-package receipt-evidence && uv run pytest tests/test_smoke.py` → `1 passed`
 - [ ] **Step 6: 커밋** — `git add pyproject.toml .gitignore .python-version uv.lock README.md src/receipt_evidence/__init__.py tests/test_smoke.py && git commit -m "chore: uv 프로젝트 스캐폴딩"` (트레일러 2줄 포함)
 
 ---
@@ -345,7 +346,8 @@ class BatchResult(BaseModel):
 - [ ] **Step 1: 실패하는 테스트 작성**
 ```python
 # tests/test_ingest.py
-import json, fitz
+import json
+import pymupdf
 from pathlib import Path
 from PIL import Image, ImageDraw
 from receipt_evidence.ingest import ingest, is_blank, normalize_image, render_pdf, sha256_file
@@ -354,7 +356,7 @@ def _jpg(path: Path, size=(1440, 3088)):
     img = Image.new("RGB", size, "white"); ImageDraw.Draw(img).text((100, 100), "48,200", fill="black"); img.save(path, "JPEG")
 
 def _pdf(path: Path):
-    doc = fitz.open(); p = doc.new_page(); p.insert_text((72, 72), "100,000 won"); doc.new_page(); doc.save(path)
+    doc = pymupdf.open(); p = doc.new_page(); p.insert_text((72, 72), "100,000 won"); doc.new_page(); doc.save(path)
 
 def test_normalize_resizes_long_side(tmp_path):
     _jpg(tmp_path / "a.jpg"); w, h = normalize_image(tmp_path / "a.jpg", tmp_path / "a.png")
@@ -382,7 +384,7 @@ def test_ingest_dedups_and_writes_manifest(tmp_path):
 from __future__ import annotations
 import hashlib, json
 from pathlib import Path
-import fitz
+import pymupdf
 from PIL import Image
 from .models import ReceiptImage
 
@@ -416,7 +418,7 @@ def render_pdf(pdf: Path, out_dir: Path, dpi: int = 200) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = sha256_file(pdf)[:12]
     paths: list[Path] = []
-    with fitz.open(pdf) as doc:
+    with pymupdf.open(pdf) as doc:
         for i, page in enumerate(doc, start=1):
             p = out_dir / f"{stem}-p{i}.png"
             page.get_pixmap(dpi=dpi).save(p)
@@ -982,9 +984,9 @@ def validate_all(receipts: list[Receipt], transcripts: dict[str, str]) -> list[R
 # tests/fixtures/echo_mcp_server.py
 """오프라인 테스트용 MCP stdio 서버. 실행: python echo_mcp_server.py"""
 import os
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
-mcp = FastMCP("echo")
+mcp = MCPServer("echo")
 
 @mcp.tool()
 def echo(text: str) -> str:
@@ -1078,8 +1080,9 @@ async def _call_all(session: ClientSession, calls: list[tuple[str, dict]]) -> li
     out: list[McpResult] = []
     for name, arguments in calls:
         res = await session.call_tool(name, arguments)
-        text = "\n".join(c.text for c in res.content if isinstance(c, types.TextContent))
-        out.append(McpResult(text=text, is_error=bool(getattr(res, "isError", False))))
+        text = "\n".join(c.text for c in (getattr(res, "content", None) or []) if isinstance(c, types.TextContent))
+        # mcp 2.x는 is_error, 1.x는 isError — 둘 다 읽어 도구 오류를 성공으로 오인하지 않게 한다
+        out.append(McpResult(text=text, is_error=bool(getattr(res, "is_error", None) or getattr(res, "isError", None))))
     return out
 
 class StdioToolCaller:

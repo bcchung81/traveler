@@ -1,0 +1,24 @@
+[project]
+name = "receipt-evidence"
+version = "0.1.0"
+description = "출장여비 영수증 증빙서류 HWPX 자동화"
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2.12", "httpx>=0.28", "pymupdf>=1.26", "pillow>=11", "pyyaml>=6", "mcp>=1.12"]
+
+[project.scripts]
+receipt-evidence = "receipt_evidence.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/receipt_evidence"]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: 실제 llama-server/MCP/네트워크 필요"]
+addopts = "-m 'not integration'"
