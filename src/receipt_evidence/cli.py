@@ -1,6 +1,6 @@
 # src/receipt_evidence/cli.py
 from __future__ import annotations
-import argparse, glob, os, shutil, sys
+import argparse, glob, logging, os, shutil, sys
 from datetime import date
 from pathlib import Path
 from .law import LawUnavailable, get_law_book, kdate
@@ -48,6 +48,7 @@ def vlm_ready() -> tuple[bool, str]:
     return (True, f"모델 파일 있음: {model}") if model and Path(model).exists() else (False, "Qwen3-VL 모델 파일을 찾지 못했어요(VLM_MODEL 지정)")
 
 def _prepare(out_dir: Path) -> int:
+    logging.getLogger("receipt_evidence").addHandler(logging.NullHandler())  # 결과는 아래에서 직접 알린다(같은 경고를 두 번 찍지 않게)
     ok = True
     with law_caller() as law, kordoc_caller() as doc:
         try:

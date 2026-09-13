@@ -249,8 +249,9 @@ def get_law_book(caller: ToolCaller, cache_dir: Path, today: date, *, refresh: b
     except Exception as e:
         if not held:
             raise LawUnavailable(f"여비 규정을 조회하지 못했고 저장해 둔 규정도 없어요: {e}") from e
-        log.warning("법령 조회 실패 — 저장해 둔 규정(MST %s)을 사용: %s", held[-1].mst, e)
-        _write_json(d / "status.json", status | {"online": False, "mst": held[-1].mst, "error": f"{type(e).__name__}: {e}"[:500]})
+        reason = " ".join(f"{type(e).__name__}: {e}".split())[:500]  # MCP 오류 문구의 줄바꿈을 한 줄로
+        log.warning("법령 조회 실패 — 저장해 둔 규정(MST %s)을 사용: %s", held[-1].mst, reason)
+        _write_json(d / "status.json", status | {"online": False, "mst": held[-1].mst, "error": reason})
     else:
         prev = held[-1] if held else None
         save_snapshot(snap, d / "snapshots" / f"{snap.mst}.json")
