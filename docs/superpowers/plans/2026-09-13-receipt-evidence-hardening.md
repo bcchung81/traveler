@@ -6,7 +6,7 @@
 
 **결정(Q&A):** 출장일에 시행되던 규정 금액표를 갖고 있지 않으면 현행 규정으로 판정하고 **안내만** 붙인다(판정은 바꾸지 않음).
 
-**Architecture:** 코어에 `LawBook`(스냅샷 보관소·오프라인 폴백·출장일 선택·개정 기록)과 `LawParams`(조문 금액 파싱), `HashCache`·`out_lock`·`NotFound`(workspace)를 더한다. MCP 호출기는 첫 호출 때 기동(lazy)해 추출 작업이 법령·kordoc 서버에 묶이지 않게 한다. 사용자 확인값 합성은 `compose_receipts` 한 곳에서 한다(웹·CLI 공용).
+**Architecture:** 코어에 `LawBook`(스냅샷 보관소·오프라인 폴백·출장일 선택·개정 기록)과 `LawParams`(조문 금액 파싱), `HashCache`·`out_lock`·`NotFound`(workspace)를 더한다. MCP 호출기는 첫 호출 때 기동(lazy)해 추출 작업이 법령·kordoc 서버에 묶이지 않게 한다. 사용자 확인값 합성은 `apply_overrides`(고친 필드 재검증)와 `clear_warnings`(교차검사 뒤 해제)로 한다(웹·CLI 공용).
 
 ## Global Constraints
 - 기존 계획의 제약 유지(루프백·같은 출처·NFC·파일당 30MB·작업 스레드 1개·템플릿 문구 계약)
@@ -18,7 +18,7 @@
 
 ## File Structure
 ```
-src/receipt_evidence/workspace.py     NotFound, HashCache, out_lock(BusyError), compose_receipts/clear_warnings, trip_file_owners
+src/receipt_evidence/workspace.py     NotFound, HashCache, out_lock(BusyError), apply_overrides 재검증·clear_warnings, trip_file_owners
 src/receipt_evidence/law.py           LawParams 파싱, 스냅샷 보관소, LawBook(get_law_book/load_law_book), 개정 기록
 src/receipt_evidence/law_baseline/287535.json  (새) 기준 스냅샷
 src/receipt_evidence/models.py        LawParams, LawSnapshot.params, ReceiptImage.orientation, PipelineResult.law_notes
@@ -39,7 +39,7 @@ run-app.sh, README.md, SKILL.md       오프라인 동작·환경변수 문서
 ## Tasks
 
 ### Task 1: workspace 공용(NotFound·HashCache·잠금·합성)
-- [x] 테스트: HashCache가 (크기, mtime) 같으면 재계산하지 않음 / out_lock 중첩 획득 시 BusyError / compose_receipts가 수정된 금액을 재검증하고 clear_warnings를 마지막에 적용 / trip_file_owners가 data 전체 출장의 파일 해시를 모음
+- [x] 테스트: HashCache가 (크기, mtime) 같으면 재계산하지 않음 / out_lock 중첩 획득 시 BusyError / apply_overrides가 수정된 금액을 재검증하고 clear_warnings를 마지막에 적용 / trip_file_owners가 data 전체 출장의 파일 해시를 모음
 - [x] 구현 → 통과
 
 ### Task 2: 법령(조문 금액·보관소·폴백·출장일·개정)
