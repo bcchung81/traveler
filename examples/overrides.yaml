@@ -1,0 +1,6 @@
+# examples/overrides.yaml — data/<출장자>/<출장>/overrides.yaml (영수증에 없는 사실·오인식을 사용자 확인값으로 교정)
+# 키는 out/<출장자>/<출장>/work/receipts.json 의 receipt_id
+0123abcd4567-p1:
+  service_date: 2026-07-09
+  region: 서울
+  clear_warnings: [MISSING_BIZNO]

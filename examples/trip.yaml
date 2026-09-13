@@ -1,0 +1,12 @@
+# examples/trip.yaml — data/<출장자>/<출장>/trip.yaml 로 복사해 수정 (없으면 영수증으로 자동 제안)
+start_date: 2026-07-09
+end_date: 2026-07-10
+destination_region: 서울
+purpose: ""
+route_stations: [나주, 용산]
+lodging_region: null      # 숙박 영수증에 지역이 없으면 "서울" 등
+over_cap_reason: null     # 숙박비 상한 초과 시 부득이한 사유
+taxi_reason: null         # 택시 이용 사유
+official_vehicle: false
+within_workplace: false
+duration_hours: null

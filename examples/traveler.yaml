@@ -1,0 +1,7 @@
+# examples/traveler.yaml — data/<출장자>/traveler.yaml 로 복사해 수정
+position: ""
+grade: 제2호              # 별표1 여비 지급 구분(제1호/제2호). 비우면 철도·숙박이 확인필요
+org: ""
+dept: ""
+workplace_region: 나주
+approval: [담당, 팀장, 부장]
