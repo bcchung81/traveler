@@ -179,3 +179,15 @@ def test_staging_names_unique_ids_and_move_trip(tmp_path):
     (out / "정백철" / "2026-07-10_서울" / "latest.json").write_text('{"version": 1, "fingerprint": "f"}', encoding="utf-8")
     with pytest.raises(ValueError, match="서류"):
         move_trip(data, out, "정백철", "2026-07-10_서울", "2026-07-11_서울")
+
+def test_trip_yaml_without_period_keeps_proposal(tmp_path):
+    # 출장 목적만 먼저 저장한 경우: 기간이 없으면 확정이 아니다 — 영수증 제안값을 유지하고 적힌 값은 우선한다
+    trav = tmp_path / "정백철"; trip_dir = trav / "2026-07-09_서울"; trip_dir.mkdir(parents=True)
+    (trip_dir / "trip.yaml").write_text("purpose: 회의\nofficial_vehicle: false\n", encoding="utf-8")
+    job = TripJob("정백철", "2026-07-09_서울", trav, trip_dir)
+    rs = [_rail("r1", date(2026, 7, 9), "나주", "용산"), _rail("r2", date(2026, 7, 10), "용산", "나주")]
+    t = resolve_trip(job, load_traveler(trav), rs)
+    assert t.proposed and (t.start_date, t.end_date) == (date(2026, 7, 9), date(2026, 7, 10)) and t.purpose == "회의"
+    (trip_dir / "trip.yaml").write_text("purpose: 회의\nstart_date: 2026-07-09\nend_date: 2026-07-11\n", encoding="utf-8")
+    t = resolve_trip(job, load_traveler(trav), rs)
+    assert not t.proposed and t.end_date == date(2026, 7, 11)

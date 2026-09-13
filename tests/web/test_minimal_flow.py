@@ -11,6 +11,7 @@ def test_first_screen_asks_only_for_receipts_and_traveler(web):
     web.deps.service.create_trip("정백철", date(2026, 7, 9), "서울")
     page = web.get("/new").text
     assert 'type="radio" name="traveler" value="정백철" checked' in page  # 출장자가 한 명이면 골라 둔다
+    assert 'id="pick-msg" role="alert" hidden' in page and "[hidden]" in web.get("/static/app.css").text  # 안내는 필요할 때만 보인다
 
 def test_upload_reads_renames_and_defaults_grade(web):
     r = upload_new(web, traveler="홍길동")
@@ -35,6 +36,7 @@ def test_trip_card_autofills_from_receipts_and_confirms_in_one_click(web):
     page = web.get(f"{base}/extract").text
     assert 'id="trip-form"' in page and 'value="2026-07-09"' in page and 'value="2026-07-10"' in page and 'value="서울"' in page
     assert "KTX 101 나주→용산 7/9" in page and 'value="나주"' in page and "자동" in page
+    assert "폴더 이름" not in page  # 자동으로 붙인 폴더 이름은 근거가 아니다(근거는 영수증 구간)
     assert 'form="trip-form"' in page and "맞아요, 규정 확인하기" in page  # 머리 버튼 한 번으로 확정
     review = web.get(f"{base}/review").text
     assert "자동 제안값" in review  # 확정 전에는 일비·식비가 확인필요
@@ -98,3 +100,15 @@ def test_home_labels_unconfirmed_trip(web):
     upload_new(web)
     home = unquote(web.get("/").text)
     assert "출장 정보 확인" in home and "/t/정백철/2026-07-09_서울/extract" in home
+
+def test_doc_info_before_confirming_trip_keeps_autofill(web):
+    upload_new(web, files=(("k1.png", (10, 20, 30)), ("k2.png", (40, 50, 60))))
+    base = "/t/정백철/2026-07-09_서울"
+    web.post(f"{base}/docinfo", data={"purpose": "회의", "next": "review"})  # 카드를 확정하지 않고 목적부터 적음
+    s = web.deps.service
+    assert s.trip_status("정백철", "2026-07-09_서울").proposed
+    page = web.get(f"{base}/extract").text
+    assert 'id="trip-form"' in page and "<details" not in page and 'value="2026-07-10"' in page and 'form="trip-form"' in page
+    web.post(f"{base}/finalize")
+    result = s.latest_result("정백철", "2026-07-09_서울")
+    assert result.trip.start_date == date(2026, 7, 9) and result.trip.end_date == date(2026, 7, 10) and result.trip.purpose == "회의"

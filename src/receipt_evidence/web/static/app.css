@@ -24,6 +24,7 @@
   --font-num: 'Anton', Impact, 'Arial Narrow', sans-serif;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }  /* .banner·.progress의 display가 hidden 속성을 덮지 않게 */
 html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); -webkit-font-smoothing: antialiased; }
 a { color: var(--ink); }
 a:hover { color: var(--magenta); }

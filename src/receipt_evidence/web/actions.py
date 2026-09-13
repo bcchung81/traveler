@@ -6,6 +6,7 @@ from pathlib import Path
 from ..law import get_law_book
 from ..models import PipelineResult
 from ..pipeline import Clients, extract_trip, run_batch
+from ..workspace import trip_confirmed
 from .vlm_process import VlmManager
 
 log = logging.getLogger("receipt_evidence.web")
@@ -20,7 +21,7 @@ def do_extract(settings, clients: Clients, vlm: VlmManager, traveler: str, trip_
         get_law_book(clients.law, settings.out_dir / ".cache", date.today())
     except Exception:
         log.exception("규정 미리 받기 실패")
-    if service is None or (service.trip_dir(traveler, trip_id) / "trip.yaml").exists():
+    if service is None or trip_confirmed(service.trip_dir(traveler, trip_id)):
         return trip_id
     s = service.trip_suggestion(traveler, trip_id)
     start, dest = s.get("start_date"), s.get("destination_region")

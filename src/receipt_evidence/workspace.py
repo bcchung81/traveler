@@ -148,11 +148,18 @@ def _base(job: TripJob, profile: TravelerProfile) -> dict:
     return {"traveler_name": profile.name, "trip_id": job.trip_id, "position": profile.position, "grade": profile.grade,
             "org": profile.org, "dept": profile.dept, "workplace_region": profile.workplace_region, "approval": profile.approval}
 
+def trip_confirmed(trip_dir: Path) -> bool:
+    """출장 기간(시작·종료)이 trip.yaml에 적혀 있어야 확정. 목적·질문 답만 적힌 trip.yaml은 아직 제안 상태다."""
+    y = _yaml(trip_dir / "trip.yaml")
+    return bool(y.get("start_date") and y.get("end_date"))
+
 def resolve_trip(job: TripJob, profile: TravelerProfile, receipts: list[Receipt]) -> TripConfig:
-    trip_yaml = job.trip_dir / "trip.yaml"
-    if trip_yaml.exists():
-        return TripConfig.model_validate(_base(job, profile) | _yaml(trip_yaml))
-    return propose_trip(job.trip_id, receipts, _base(job, profile))
+    y = _yaml(job.trip_dir / "trip.yaml")
+    if y.get("start_date") and y.get("end_date"):
+        return TripConfig.model_validate(_base(job, profile) | y)
+    proposal = propose_trip(job.trip_id, receipts, _base(job, profile))
+    written = {k: v for k, v in y.items() if v not in (None, "", [])}  # 적어 둔 값은 우선하고, 빈 칸만 영수증 제안으로
+    return TripConfig.model_validate(proposal.model_dump() | written | {"proposed": True}) if written else proposal
 
 @dataclass(frozen=True)
 class Suggestion:

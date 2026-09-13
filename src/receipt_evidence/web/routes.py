@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse
 from starlette.datastructures import UploadFile
 from ..models import Category
 from ..stations import city_name
-from ..workspace import TRIP_YAML_FIELDS
+from ..workspace import TRIP_YAML_FIELDS, trip_confirmed
 from . import actions
 from .service import PROFILE_FIELDS, TripMoved, TripSummary, _name
 
@@ -151,7 +151,7 @@ def register_extract(app: FastAPI, settings, deps, render, trip_base, see_other)
         if not receipts:
             return {}
         saved = service.load_trip_yaml(t, trip)
-        confirmed = (service.trip_dir(t, trip) / "trip.yaml").exists()
+        confirmed = trip_confirmed(service.trip_dir(t, trip))
         profile = service.load_profile(t)
         sug = service.trip_suggestion(t, trip)
         def field(key, saved_value):

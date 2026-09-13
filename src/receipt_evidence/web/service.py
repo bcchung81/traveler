@@ -12,7 +12,7 @@ from ..models import Category, PipelineResult, Receipt, ReceiptImage, TravelerPr
 from ..versioning import read_latest
 from ..workspace import (STAGING_PREFIX, TRIP_DIR_RE, TRIP_YAML_FIELDS, HashCache, NotFound, Suggestion, apply_overrides, is_staging,
                          load_overrides, load_traveler, move_trip, nfc, resolve_moved, staging_trip_id, suggest_trip, trip_file_owners,
-                         unique_trip_id, was_auto_named)
+                         trip_confirmed, unique_trip_id, was_auto_named)
 
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024
 PROFILE_FIELDS = ("position", "grade", "org", "dept", "workplace_region", "approval")
@@ -201,7 +201,10 @@ class TripService:
         return t, trip_id
 
     def trip_suggestion(self, traveler: str, trip_id: str) -> dict[str, Suggestion]:
-        return suggest_trip(trip_id, self.receipts(traveler, trip_id), self.load_profile(traveler).workplace_region)
+        t, trip = _name(traveler), _name(trip_id)
+        # 자동으로 붙인 폴더 이름은 사용자가 정한 게 아니므로 근거로 쓰지 않고 영수증에서 다시 제안한다
+        named_by_user = not (is_staging(trip) or was_auto_named(self.out_dir, t, trip))
+        return suggest_trip(trip if named_by_user else STAGING_PREFIX, self.receipts(t, trip), self.load_profile(t).workplace_region)
 
     def moved_to(self, traveler: str, trip_id: str) -> str | None:
         if self.trip_dir(traveler, trip_id).is_dir():
@@ -421,7 +424,7 @@ class TripService:
         return TripSummary(traveler=t, trip_id=trip_id, start_date=trip_yaml.get("start_date") or folder_date, end_date=trip_yaml.get("end_date"),
                            destination=trip_yaml.get("destination_region") or (m.group(2) if m else ""), files=len(files),
                            extracted=extracted, stale=stale, version=version, claimed=claimed, approved=approved,
-                           review_count=review_count, verify_ok=verify_ok, proposed=not (d / "trip.yaml").exists(), stage=stage,
+                           review_count=review_count, verify_ok=verify_ok, proposed=not trip_confirmed(d), stage=stage,
                            staging=staging, display_name=display)
 
     def list_trips(self) -> list[TripSummary]:
