@@ -29,5 +29,5 @@ def test_sorting_version_and_proposed_notice(trip, law_snapshot):
     ds = decide_all([late, early], t, law_snapshot)
     md = build_markdown(t, law_snapshot, [late, early], ds, {}, version=2)
     detail = md[md.index("## 영수증별 상세"):]
-    assert detail.index("2026. 7. 9.") < detail.index("2026. 7. 10.") < detail.index("| 정액 |")  # "인정액" 머리글과 구분
+    assert detail.index("| 7.9. |") < detail.index("| 7.10. |") < detail.index("| 정액 |")  # 상세표 일자는 짧게(연도는 개요에)
     assert "※ 출장 정보는 영수증으로 자동 제안한 값입니다(근거: 폴더명 날짜 2026-07-09)" in md and "| 문서 버전 | v2 |" in md

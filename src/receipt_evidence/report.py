@@ -22,6 +22,9 @@ def md_table(headers: list[str], rows: list[list[str]]) -> str:
 def _kdate(d: date | None) -> str:
     return f"{d.year}. {d.month}. {d.day}." if d else "미정"
 
+def _short(d: date) -> str:
+    return f"{d.month}.{d.day}."  # 상세표 일자 칸은 좁아서 연도·공백을 뺀다(연도는 출장 개요에 있음)
+
 def _receipt_day(r: Receipt) -> date | None:
     return r.service_date or (r.paid_at.date() if r.paid_at else None)
 
@@ -60,7 +63,7 @@ def build_markdown(trip: TripConfig, law: LawSnapshot, receipts: list[Receipt], 
     for i, d in enumerate(ordered, start=1):
         r = by_id.get(d.receipt_id or "")
         day = _receipt_day(r) if r else None
-        detail.append([str(i), _kdate(day) if day else ("정액" if r is None else "미상"), d.item, (r.merchant or "-") if r else "-",
+        detail.append([str(i), _short(day) if day else ("정액" if r is None else "미상"), d.item, (r.merchant or "-") if r else "-",
                        (r.approval_no or "-") if r else "-", fmt_won(d.claimed_amount), fmt_won(d.approved_amount), d.verdict.value, ", ".join(d.basis) or "-"])
     detail.append(["합계", "", "", "", "", fmt_won(t["claimed"]), fmt_won(t["approved"]), "", ""])
     md += [md_table(DETAIL_HEADERS, detail), "", "## 적용 규정",

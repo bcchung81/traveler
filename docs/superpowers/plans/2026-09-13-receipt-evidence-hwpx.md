@@ -2973,6 +2973,7 @@ def test_e2e_real_receipts_incremental(tmp_path):
 - 테스트 수정: 보고서 정렬 테스트가 "정액"을 찾다 머리글 "인정액"에 걸림 → `"| 정액 |"`.
 - **macOS 한글 NFD 버그(실데이터에서 발견)**: Finder가 만든 파일·폴더 이름은 자모 분리형(NFD)이라 출장자 필터가 0건이 되고, `region_key`가 서울을 "그 밖의 지역"으로 판정해 숙박 상한이 100,000 → 70,000으로 틀어짐. `workspace.nfc()`로 출장자·출장 폴더명·필터를 NFC로 정규화하고 `region_key` 입력도 NFC로 정규화. 회귀 테스트 `test_nfd_folder_names_from_finder_are_normalized`, `test_region_key`(NFD) 추가.
 - **구분 보정(실데이터에서 발견)**: 토스페이먼츠 결제 메일 형태의 숙박 영수증을 VLM이 '기타'로 분류 → `extract.infer_category()`가 VLM이 기타/미상일 때만 판매자·전사문 키워드(여기어때·야놀자·호텔 → 숙박, 코레일·SRT → 철도, 택시, 버스, 항공)로 보정하고 `raw["category_inferred_from"]`에 근거 기록. 캐시된 결과에도 적용되므로 PROMPT_VERSION은 그대로. 테스트 `test_category_keyword_fallback_when_vlm_says_other` 추가.
+- **HWPX 레이아웃(kordoc render_document로 실물 확인 후 수정)**: ① `date`를 넘기면 표지가 자동으로 켜져 빈 문서정보표가 결재란과 겹침 → `cover: False`, `date` 제거. ② 소속이 비면 보고정보에 "소속 미기재"가 들어감 → 있는 값만 이어 붙임. ③ 세로로 긴 휴대폰 스크린샷이 본문 폭에 맞춰 커져 한 쪽을 넘겨 아래가 잘림 → 붙임 이미지를 세로/가로 1.3 비율로 좌우 흰 여백을 채움(`ATTACHMENT_MAX_RATIO`). ④ 상세표 일자 칸 줄바꿈 → `7.10.` 형식(연도는 출장 개요). 8쪽 → 7쪽.
 - 알려진 한계: 결제대행 메일은 판매자 사업자번호가 없어 VLM이 결제대행사(토스페이먼츠) 사업자번호를 `business_no`로 읽는다. 체크섬은 통과하므로 판정에는 영향이 없지만, 증빙 표기상 확인이 필요하다.
 
 ## 자체 점검

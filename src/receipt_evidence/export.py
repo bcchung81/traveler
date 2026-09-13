@@ -10,6 +10,7 @@ from .models import Receipt, ReceiptImage, TripConfig
 from .report import DETAIL_HEADERS
 
 ATTACHMENT_MAX_SIDE = 1600
+ATTACHMENT_MAX_RATIO = 1.3  # 세로/가로 상한: kordoc은 이미지를 본문 폭에 맞추므로, 더 긴 이미지는 좌우 흰 여백을 채워 한 쪽에 들어가게 한다
 
 def prepare_attachments(images: list[ReceiptImage], receipts: list[Receipt], dst: Path, max_side: int = ATTACHMENT_MAX_SIDE) -> dict[str, list[str]]:
     dst.mkdir(parents=True, exist_ok=True)
@@ -25,6 +26,10 @@ def prepare_attachments(images: list[ReceiptImage], receipts: list[Receipt], dst
             with Image.open(img.png_path) as im:
                 small = im.convert("RGB")
                 small.thumbnail((max_side, max_side))
+                if small.height / small.width > ATTACHMENT_MAX_RATIO:
+                    canvas = Image.new("RGB", (round(small.height / ATTACHMENT_MAX_RATIO), small.height), "white")
+                    canvas.paste(small, ((canvas.width - small.width) // 2, 0))
+                    small = canvas
                 small.save(dst / name, "JPEG", quality=85)
             names.append(name)
         out[r.receipt_id] = names
@@ -60,9 +65,10 @@ def approved_total_from_md(md: str) -> int:
 
 def export_hwpx(caller: ToolCaller, markdown: str, out_path: Path, trip: TripConfig, image_dir: Path) -> Path:
     today = date.today()
+    owner = " ".join(x for x in (trip.dept or trip.org, trip.traveler_name) if x)
+    # cover=False: date·org를 넘기면 표지가 자동으로 켜져 빈 문서정보표가 결재란과 겹친다
     args = {"markdown": markdown, "output_path": str(out_path), "preset": "보고서", "image_dir": str(image_dir),
-            "date": f"{today.year}. {today.month}. {today.day}.", "end_mark": False,
-            "report_info": f"({today.year}. {today.month}. {today.day}., {trip.dept or trip.org or '소속 미기재'} {trip.traveler_name})"}
+            "cover": False, "end_mark": False, "report_info": f"({today.year}. {today.month}. {today.day}., {owner})"}
     if trip.org:
         args["org"] = trip.org
     if trip.approval:
