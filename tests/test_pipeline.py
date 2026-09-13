@@ -3,41 +3,20 @@ import json, shutil
 from datetime import date, timedelta
 from pathlib import Path
 import pytest
-from helpers import ColorVlm, color_png, spec
-from receipt_evidence.mcp_client import FakeToolCaller
+from helpers import TRAVELER, ColorVlm, color_png, doc_fake, law_from, rail, spec
 from receipt_evidence.models import Verdict
 from receipt_evidence.pipeline import Clients, RunOptions, run_batch
-
-TRAVELER = "grade: 제2호\nworkplace_region: 나주\napproval: [담당, 팀장]\n"
-
-def _law(t):
-    return FakeToolCaller({"search_law": lambda a: t["search_law.txt"],
-                           "get_annexes": lambda a: t["annex1.html"] if a["annexNo"] == "1" else t["annex2.html"],
-                           "get_law_text": lambda a: t["jo" + a["jo"][1:-1] + ".txt"]})
-
-def _doc(fail_on: str | None = None):
-    def generate(a):
-        if fail_on and fail_on in a["output_path"]:
-            raise RuntimeError("kordoc 실패 재현")
-        Path(a["output_path"]).write_bytes(b"PK")
-        return "ok"
-    return FakeToolCaller({"generate_document": generate,
-                           "parse_document": lambda a: (Path(a["file_path"]).parent / "report.md").read_text(encoding="utf-8")})
-
-def _rail(n: int, day: date, o: str, d: str) -> dict:
-    return spec("철도", 48200, f"7{n:07d}", merchant="한국철도공사", business_no="314-82-10024", service_date=day.isoformat(),
-                paid_at=f"{day.isoformat()} 09:00", origin=o, destination=d, seat_class="일반실", train_no=f"KTX {100 + n}")
 
 def test_single_trip_versions_and_incremental_submission(tmp_path, law_fixture_text):
     data, out = tmp_path / "data", tmp_path / "out"
     trav = data / "정백철"; trip_dir = trav / "2026-07-09_서울"; trip_dir.mkdir(parents=True)
     (trav / "traveler.yaml").write_text(TRAVELER, encoding="utf-8")
     (trip_dir / "trip.yaml").write_text("start_date: 2026-07-09\nend_date: 2026-07-10\ndestination_region: 서울\nroute_stations: [나주, 용산]\n", encoding="utf-8")
-    specs = {(10, 20, 30): _rail(1, date(2026, 7, 9), "나주", "용산"), (40, 50, 60): _rail(2, date(2026, 7, 10), "용산", "나주"),
+    specs = {(10, 20, 30): rail(1, date(2026, 7, 9), "나주", "용산"), (40, 50, 60): rail(2, date(2026, 7, 10), "용산", "나주"),
              (70, 80, 90): spec("숙박", 100000, "68325420", merchant="(주)예시숙박", service_date="2026-07-09", region="서울", nights=1)}
     color_png(trip_dir / "k1.png", (10, 20, 30)); color_png(trip_dir / "k2.png", (40, 50, 60))
     vlm = ColorVlm(specs)
-    clients = Clients(vlm=vlm, law=_law(law_fixture_text), doc=_doc())
+    clients = Clients(vlm=vlm, law=law_from(law_fixture_text), doc=doc_fake())
 
     r1 = run_batch(data, out, clients, run_id="b1").results[0]
     assert (r1.version, r1.skipped, r1.cache_misses, r1.verify_ok) == (1, False, 2, True)
@@ -71,11 +50,11 @@ def test_batch_travelers_trips_scale_and_cross_trip_duplicate(tmp_path, law_fixt
         for k in range(3):
             n += 1
             rgb = (n * 7 % 256, 100, 200 - n)
-            specs[rgb] = _rail(n, day + timedelta(days=k % 2), "나주", "서울역")
+            specs[rgb] = rail(n, day + timedelta(days=k % 2), "나주", "서울역")
             color_png(trip_dir / f"r{k}.png", rgb)
     shutil.copy(data / "정백철" / "2026-07-09_서울" / "r0.png", data / "홍길동" / "2026-07-20_대전" / "dup.png")
 
-    res = run_batch(data, out, Clients(vlm=ColorVlm(specs), law=_law(law_fixture_text), doc=_doc()), run_id="b1", opts=RunOptions(workers=3))
+    res = run_batch(data, out, Clients(vlm=ColorVlm(specs), law=law_from(law_fixture_text), doc=doc_fake()), run_id="b1", opts=RunOptions(workers=3))
     by = {(r.traveler, r.trip_id): r for r in res.results}
     assert len(res.results) == 4 and all(r.error is None and r.version == 1 and r.verify_ok for r in res.results)
     assert sum(r.cache_misses for r in res.results) == 12 and sum(r.cache_hits for r in res.results) == 1
@@ -90,27 +69,27 @@ def test_batch_travelers_trips_scale_and_cross_trip_duplicate(tmp_path, law_fixt
 def test_no_trip_folders_raises_with_guidance(tmp_path, law_fixture_text):
     data = tmp_path / "data"; data.mkdir(); color_png(data / "loose.png", (1, 2, 3))
     with pytest.raises(ValueError, match="출장자"):
-        run_batch(data, tmp_path / "out", Clients(vlm=ColorVlm({}), law=_law(law_fixture_text), doc=_doc()))
+        run_batch(data, tmp_path / "out", Clients(vlm=ColorVlm({}), law=law_from(law_fixture_text), doc=doc_fake()))
 
 def test_unhealthy_vlm_only_matters_on_cache_miss(tmp_path, law_fixture_text):
     data, out = tmp_path / "data", tmp_path / "out"
     trip_dir = data / "정백철" / "2026-07-09_서울"; trip_dir.mkdir(parents=True)
-    specs = {(10, 20, 30): _rail(1, date(2026, 7, 9), "나주", "용산"), (40, 50, 60): _rail(2, date(2026, 7, 10), "용산", "나주")}
+    specs = {(10, 20, 30): rail(1, date(2026, 7, 9), "나주", "용산"), (40, 50, 60): rail(2, date(2026, 7, 10), "용산", "나주")}
     color_png(trip_dir / "k1.png", (10, 20, 30))
-    run_batch(data, out, Clients(vlm=ColorVlm(specs), law=_law(law_fixture_text), doc=_doc()), run_id="a")
+    run_batch(data, out, Clients(vlm=ColorVlm(specs), law=law_from(law_fixture_text), doc=doc_fake()), run_id="a")
     down = ColorVlm(specs, healthy=False)
-    assert run_batch(data, out, Clients(vlm=down, law=_law(law_fixture_text), doc=_doc()), run_id="b").results[0].skipped
+    assert run_batch(data, out, Clients(vlm=down, law=law_from(law_fixture_text), doc=doc_fake()), run_id="b").results[0].skipped
     color_png(trip_dir / "k2.png", (40, 50, 60))
     with pytest.raises(RuntimeError, match="llama-server"):
-        run_batch(data, out, Clients(vlm=down, law=_law(law_fixture_text), doc=_doc()), run_id="c")
+        run_batch(data, out, Clients(vlm=down, law=law_from(law_fixture_text), doc=doc_fake()), run_id="c")
 
 def test_one_trip_failure_does_not_stop_batch(tmp_path, law_fixture_text):
     data, out = tmp_path / "data", tmp_path / "out"
     specs = {}
     for trip_id, rgb, day in (("2026-07-09_서울", (10, 20, 30), date(2026, 7, 9)), ("2026-08-03_부산", (40, 50, 60), date(2026, 8, 3))):
         d = data / "정백철" / trip_id; d.mkdir(parents=True); color_png(d / "k.png", rgb)
-        specs[rgb] = _rail(rgb[0], day, "나주", "부산")
-    res = run_batch(data, out, Clients(vlm=ColorVlm(specs), law=_law(law_fixture_text), doc=_doc(fail_on="2026-08-03_부산")), run_id="x")
+        specs[rgb] = rail(rgb[0], day, "나주", "부산")
+    res = run_batch(data, out, Clients(vlm=ColorVlm(specs), law=law_from(law_fixture_text), doc=doc_fake(fail_on="2026-08-03_부산")), run_id="x")
     by = {r.trip_id: r for r in res.results}
     assert by["2026-07-09_서울"].error is None and "kordoc 실패 재현" in by["2026-08-03_부산"].error
     assert "오류" in Path(res.summary_md_path).read_text(encoding="utf-8")

@@ -1,6 +1,7 @@
 # src/receipt_evidence/pipeline.py
 from __future__ import annotations
 import json, logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
@@ -10,7 +11,7 @@ from .extract import extract_receipts
 from .ingest import ingest
 from .law import get_law_snapshot
 from .mcp_client import ToolCaller
-from .models import BatchResult, LawSnapshot, PipelineResult, Receipt, ReceiptImage, TripConfig
+from .models import BatchResult, Decision, LawSnapshot, PipelineResult, Receipt, ReceiptImage, TripConfig
 from .report import build_markdown, fmt_won, md_table
 from .rules import apply_cross_checks, decide_all, mark_cross_trip_duplicates, review_items, totals
 from .validate import validate_all
@@ -42,6 +43,14 @@ class TripWork:
     cache_hits: int
     cache_misses: int
 
+@dataclass
+class TripReview:
+    trip: TripConfig
+    receipts: list[Receipt]
+    decisions: list[Decision]
+    totals: dict[str, int]
+    review_items: list[str]
+
 def _dump(path: Path, items: list) -> None:
     path.write_text(json.dumps([i.model_dump(mode="json") for i in items], ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -60,26 +69,33 @@ def prepare_trip(job: TripJob, images: list[ReceiptImage], out_dir: Path, client
     hits, misses = cache.hits, cache.misses
     receipts = extract_receipts(clients.vlm, images, work, cache=cache, workers=opts.workers)
     transcripts = {r.receipt_id: Path(r.transcript_path).read_text(encoding="utf-8") for r in receipts}
-    receipts = apply_overrides(validate_all(receipts, transcripts), load_overrides(job.trip_dir))
+    validated = validate_all(receipts, transcripts)
+    _dump(work / "receipts.extracted.json", validated)  # overrides 적용 전 원본 — 웹 화면이 overrides.yaml과 즉시 합성
+    receipts = apply_overrides(validated, load_overrides(job.trip_dir))
     _dump(work / "receipts.json", receipts)
     log.info("prepare %s/%s: receipts=%d cache_hits=%d cache_misses=%d", job.traveler, job.trip_id, len(receipts),
              cache.hits - hits, cache.misses - misses)
     return TripWork(job, work, images, receipts, cache.hits - hits, cache.misses - misses)
 
+def review_receipts(job: TripJob, receipts: list[Receipt], law: LawSnapshot) -> TripReview:
+    """파일을 만들지 않고 출장 해석·교차검사·판정·합계만 계산한다(웹 판정 검토 화면과 finalize 공용)."""
+    trip = resolve_trip(job, load_traveler(job.traveler_dir), receipts)
+    checked = apply_cross_checks(receipts, trip)
+    decisions = decide_all(checked, trip, law)
+    return TripReview(trip, checked, decisions, totals(decisions), review_items(decisions, checked))
+
 def finalize_trip(work: TripWork, law: LawSnapshot, clients: Clients, out_dir: Path, opts: RunOptions, run_id: str) -> PipelineResult:
     job = work.job
     trip_out = trip_out_dir(out_dir, job)
-    trip = resolve_trip(job, load_traveler(job.traveler_dir), work.receipts)
+    review = review_receipts(job, work.receipts, law)
+    trip, receipts, decisions, t = review.trip, review.receipts, review.decisions, review.totals
     if trip.proposed:
         (work.work_dir / "trip.proposed.yaml").write_text(dump_trip_yaml(trip), encoding="utf-8")
-    receipts = apply_cross_checks(work.receipts, trip)
-    decisions = decide_all(receipts, trip, law)
-    t = totals(decisions)
     fp = fingerprint(receipts, trip, law)
     version, create = plan_version(trip_out, fp, force=opts.new_version)
     vdir = trip_out / f"v{version}"
     common = dict(run_id=run_id, traveler=job.traveler, trip_id=job.trip_id, trip=trip, law_mst=law.mst, law_effective=law.effective,
-                  receipts=receipts, decisions=decisions, totals=t, review_items=review_items(decisions, receipts), version=version,
+                  receipts=receipts, decisions=decisions, totals=t, review_items=review.review_items, version=version,
                   cache_hits=work.cache_hits, cache_misses=work.cache_misses)
     if not create:
         verify = json.loads((vdir / "verify.json").read_text(encoding="utf-8")) if (vdir / "verify.json").exists() else {}
@@ -133,8 +149,35 @@ def write_summary(out_dir: Path, run_id: str, results: list[PipelineResult], war
                                     ensure_ascii=False, indent=2), encoding="utf-8")
     return md_path, json_path
 
+def _ensure_vlm(images: list[ReceiptImage], cache: ExtractCache, clients: Clients, on_vlm_needed: Callable[[], None] | None) -> None:
+    """새로 읽을 영수증(캐시 미스)이 있을 때만 VLM이 필요하다. 꺼져 있으면 훅(자동 시작)을 부르고 다시 확인한다."""
+    if all(cache.has(img.sha256) for img in images) or clients.vlm.healthy():
+        return
+    if on_vlm_needed is not None:
+        on_vlm_needed()
+        if clients.vlm.healthy():
+            return
+    raise RuntimeError("llama-server가 응답하지 않음. scripts/start_vlm.sh 로 기동하세요")
+
+def find_job(data_dir: Path, traveler: str, trip_id: str) -> TripJob:
+    jobs, _ = discover(data_dir, [traveler], [trip_id])
+    if not jobs:
+        raise LookupError(f"영수증이 있는 출장 폴더를 찾지 못함: {traveler}/{trip_id}")
+    return jobs[0]
+
+def extract_trip(data_dir: Path, out_dir: Path, clients: Clients, traveler: str, trip_id: str, opts: RunOptions | None = None,
+                 on_vlm_needed: Callable[[], None] | None = None) -> TripWork:
+    """출장 1건만 ingest·추출·검증·overrides 적용(판정·문서 생성은 하지 않음)."""
+    opts = opts or RunOptions()
+    job = find_job(data_dir, traveler, trip_id)
+    cache = ExtractCache(out_dir / ".cache")
+    images = ingest(job.trip_dir, trip_out_dir(out_dir, job) / "work")
+    _ensure_vlm(images, cache, clients, on_vlm_needed)
+    return prepare_trip(job, images, out_dir, clients, cache, opts)
+
 def run_batch(data_dir: Path, out_dir: Path, clients: Clients, *, travelers: list[str] | None = None, trips: list[str] | None = None,
-              opts: RunOptions | None = None, run_id: str | None = None) -> BatchResult:
+              opts: RunOptions | None = None, run_id: str | None = None, summary: bool = True,
+              on_vlm_needed: Callable[[], None] | None = None) -> BatchResult:
     opts = opts or RunOptions()
     run_id = run_id or datetime.now().strftime("%Y%m%d-%H%M%S")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -144,8 +187,7 @@ def run_batch(data_dir: Path, out_dir: Path, clients: Clients, *, travelers: lis
         raise ValueError("처리할 출장 폴더가 없어요. data/<출장자>/<출장>/ 구조로 영수증을 넣어 주세요")
     cache = ExtractCache(out_dir / ".cache")
     ingested = [(job, ingest(job.trip_dir, trip_out_dir(out_dir, job) / "work")) for job in jobs]
-    if any(not cache.has(img.sha256) for _, imgs in ingested for img in imgs) and not clients.vlm.healthy():
-        raise RuntimeError("llama-server가 응답하지 않음. scripts/start_vlm.sh 로 기동하세요")
+    _ensure_vlm([img for _, imgs in ingested for img in imgs], cache, clients, on_vlm_needed)
     works = [prepare_trip(job, imgs, out_dir, clients, cache, opts) for job, imgs in ingested]
     marked = mark_cross_trip_duplicates({str(w.job.trip_dir): w.receipts for w in works})
     for w in works:
@@ -158,5 +200,7 @@ def run_batch(data_dir: Path, out_dir: Path, clients: Clients, *, travelers: lis
         except Exception as e:  # 출장 하나의 실패가 일괄 처리 전체를 멈추지 않게 한다
             log.exception("finalize 실패 %s/%s", w.job.traveler, w.job.trip_id)
             results.append(_failed(w, law, run_id, e))
+    if not summary:
+        return BatchResult(run_id=run_id, results=results, warnings=warnings, summary_md_path="", summary_json_path="")
     md_path, json_path = write_summary(out_dir, run_id, results, warnings)
     return BatchResult(run_id=run_id, results=results, warnings=warnings, summary_md_path=str(md_path), summary_json_path=str(json_path))
