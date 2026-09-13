@@ -233,7 +233,7 @@ def test_images_versions_and_law_cache(tmp_path, law_fixture_text):
   - `save_override`: 추출값(`extracted`)과 폼 값을 정규화(amount/nights `int`, 날짜 `date`, 빈 값 None, paid_at은 `parse_datetime`)해서 비교해, 다른 필드만 `overrides[rid]`에 넣고 같은 필드는 제거. `clear_warnings`는 목록이 비면 키 제거. 빈 항목은 삭제하고, 전체가 비면 파일 삭제.
   - `stage`: 파일 0 → empty. 추출 안 됨·stale → uploaded. 버전이 있고 `v<N>/result.json` mtime ≥ max(traveler.yaml, trip.yaml, overrides.yaml, receipts.extracted.json mtime) → documented. 그 외 → extracted. `stale`은 현재 파일들의 `sha256_file` 집합 ≠ `work/manifest.json`의 sha256 집합.
   - `image_path`: `^[0-9a-f]{12}-p\d+$`만 허용 → `trip_out/work/images/<id>.png`.
-- [ ] **Step 4: 통과 확인** — `uv run pytest tests/web/test_service.py` → `7 passed`
+- [ ] **Step 4: 통과 확인** — `uv run pytest tests/web/test_service.py` → `6 passed`
 - [ ] **Step 5: 커밋** — `feat: 웹앱 TripService(폴더 계약·업로드·설정·사용자 확인값·상태)`
 
 ---
