@@ -42,7 +42,7 @@ def test_review_page_manual_decision_flow(web):
     assert r.status_code == 303 and unquote(r.headers["location"]) == f"{BASE}/review#d-{stay}"
     page = web.get(f"{BASE}/review").text
     assert "248,200" in page and "잠깐, 확인!" not in page and "chip--manual" in page and "체크인 7/9 확인" in page
-    assert "규정상 확인필요 0원" in page
+    assert "규정상 확인필요 0원" in page and "담당자 판정 1건" in page and "규정 한도 초과 인정 1건" not in page
     assert web.post(f"{BASE}/receipts/{stay}/decision", data={"verdict": "지급", "reason": ""}).status_code == 400
 
 def test_over_rule_badge_over_cap_reason_and_document(web):
@@ -55,7 +55,7 @@ def test_over_rule_badge_over_cap_reason_and_document(web):
     assert "130,000" in web.get(f"{BASE}/review").text  # 상한의 10분의 3까지 규정대로 추가지급
     web.post(f"{BASE}/receipts/{hotel}/decision", data={"verdict": "지급", "reason": "기관장 승인"})
     page = web.get(f"{BASE}/review").text
-    assert "규정 초과" in page and "150,000" in page
+    assert "규정 초과" in page and "150,000" in page and "규정 한도 초과 인정 1건" in page
     web.post(f"{BASE}/finalize")
     result = web.deps.service.latest_result("정백철", "2026-07-09_서울")
     md = open(result.report_md_path, encoding="utf-8").read()
