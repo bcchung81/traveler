@@ -1,0 +1,147 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&amp;family=Hahmlet:wght@500;700&amp;family=IBM+Plex+Sans+KR:wght@400;500;700&amp;display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #FAF8F2; color: #08080C; font-family: 'IBM Plex Sans KR', 'Apple SD Gothic Neo', sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #C2500A; } a:hover { color: #08080C; }
+  </style>
+</helmet>
+<div style="width: 1440px; min-height: 1180px; background: #FAF8F2; padding: 52px 64px 64px; display: flex; flex-direction: column; gap: 36px;">
+
+  <header style="display: flex; flex-direction: column; gap: 10px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; letter-spacing: 0.04em;">
+      <div style="display: flex; gap: 18px; align-items: baseline;">
+        <span style="font-family: 'Hahmlet', serif; font-weight: 700; font-size: 20px; letter-spacing: -0.01em;">여비정산 증빙</span>
+        <span style="color: rgba(8,8,12,0.56);">정산서 2026-0709</span>
+      </div>
+      <div style="display: flex; gap: 24px; color: rgba(8,8,12,0.56);">
+        <span style="color: #08080C; font-weight: 500;">정산 검토</span>
+        <span>출장 목록</span>
+        <span>여비 규정</span>
+      </div>
+    </div>
+    <div style="height: 4px; background: #08080C;"></div>
+    <div style="height: 1px; background: #08080C;"></div>
+  </header>
+
+  <section style="display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 56px; align-items: end;">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div style="font-size: 14px; font-weight: 700; letter-spacing: 0.08em; color: #C2500A;">서울 출장 · 정백철 · 여비 구분 제2호</div>
+      <h1 style="margin: 0; font-family: 'Hahmlet', serif; font-weight: 700; font-size: 58px; line-height: 1.12; letter-spacing: -0.025em; text-wrap: balance;">규정대로 계산한 이틀치 출장 여비</h1>
+      <p style="margin: 0; font-size: 18px; line-height: 1.7; color: rgba(8,8,12,0.72); max-width: 680px; text-wrap: pretty;">KTX 왕복 두 장과 일비·식비는 지급으로 판정했습니다. 숙박 영수증 한 건은 결제일과 숙박 지역을 확인한 뒤 반영합니다.</p>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px; border-left: 1px solid rgba(8,8,12,0.16); padding-left: 40px;">
+      <div style="font-size: 14px; letter-spacing: 0.08em; color: rgba(8,8,12,0.56);">인정액</div>
+      <div style="display: flex; align-items: baseline; gap: 8px;">
+        <span style="font-family: 'Anton', sans-serif; font-size: 124px; line-height: 0.86; letter-spacing: -0.01em;">196,400</span>
+        <span style="font-family: 'Hahmlet', serif; font-weight: 700; font-size: 34px;">원</span>
+      </div>
+      <div style="display: flex; gap: 16px; font-size: 15px; color: rgba(8,8,12,0.64);">
+        <span>청구 196,400</span>
+        <span style="color: #C2500A;">확인필요 100,000 <sup>①</sup></span>
+      </div>
+    </div>
+  </section>
+
+  <section style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid #08080C; border-bottom: 1px solid #08080C;">
+    <div style="padding: 18px 20px 18px 0; display: flex; gap: 14px; align-items: baseline;">
+      <span style="font-family: 'Anton', sans-serif; font-size: 28px;">01</span>
+      <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-weight: 700; font-size: 16px;">스캔</span><span style="font-size: 14px; color: rgba(8,8,12,0.56);">영수증 3건 전사 완료</span></span>
+    </div>
+    <div style="padding: 18px 20px; display: flex; gap: 14px; align-items: baseline; border-left: 1px solid rgba(8,8,12,0.16);">
+      <span style="font-family: 'Anton', sans-serif; font-size: 28px;">02</span>
+      <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-weight: 700; font-size: 16px;">규정</span><span style="font-size: 14px; color: rgba(8,8,12,0.56);">공무원 여비 규정 2026. 7. 1. 시행</span></span>
+    </div>
+    <div style="padding: 18px 20px; display: flex; gap: 14px; align-items: baseline; border-left: 1px solid rgba(8,8,12,0.16);">
+      <span style="font-family: 'Anton', sans-serif; font-size: 28px; color: #C2500A;">03</span>
+      <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-weight: 700; font-size: 16px;">판정</span><span style="font-size: 14px; color: #C2500A;">지급 4 · 확인필요 1</span></span>
+    </div>
+    <div style="padding: 18px 20px; display: flex; gap: 14px; align-items: baseline; border-left: 1px solid rgba(8,8,12,0.16); color: rgba(8,8,12,0.4);">
+      <span style="font-family: 'Anton', sans-serif; font-size: 28px;">04</span>
+      <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-weight: 700; font-size: 16px;">서류</span><span style="font-size: 14px;">HWPX 증빙내역서 대기</span></span>
+    </div>
+  </section>
+
+  <section style="display: grid; grid-template-columns: minmax(0, 8fr) minmax(0, 4fr); gap: 56px; align-items: start;">
+    <div style="display: flex; flex-direction: column;">
+      <div style="display: grid; grid-template-columns: 44px minmax(0, 1fr) 120px 110px 110px 96px; padding: 0 0 12px; font-size: 13px; letter-spacing: 0.06em; color: rgba(8,8,12,0.52); border-bottom: 1px solid #08080C;">
+        <span>No.</span><span>내역</span><span>일자</span><span style="text-align: right;">청구</span><span style="text-align: right;">인정</span><span style="text-align: right;">판정</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 44px minmax(0, 1fr) 120px 110px 110px 96px; padding: 18px 0; align-items: baseline; border-bottom: 1px solid rgba(8,8,12,0.14); font-size: 16px;">
+        <span style="font-family: 'Anton', sans-serif; color: rgba(8,8,12,0.4);">1</span>
+        <span style="display: flex; flex-direction: column; gap: 4px;"><span style="font-family: 'Hahmlet', serif; font-weight: 700; font-size: 18px;">KTX-산천 424, 나주에서 용산</span><span style="font-size: 14px; color: rgba(8,8,12,0.56);">철도운임 · 별표2 제2호 실비(일반실)</span></span>
+        <span style="color: rgba(8,8,12,0.64);">2026. 7. 9.</span>
+        <span style="text-align: right; color: rgba(8,8,12,0.64);">48,200</span>
+        <span style="text-align: right; font-weight: 700;">48,200</span>
+        <span style="text-align: right; font-weight: 700;">지급</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 44px minmax(0, 1fr) 120px 110px 110px 96px; padding: 18px 0; align-items: baseline; border-bottom: 1px solid rgba(8,8,12,0.14); font-size: 16px;">
+        <span style="font-family: 'Anton', sans-serif; color: rgba(8,8,12,0.4);">2</span>
+        <span style="display: flex; flex-direction: column; gap: 4px;"><span style="font-family: 'Hahmlet', serif; font-weight: 700; font-size: 18px;">KTX 433, 용산에서 나주</span><span style="font-size: 14px; color: rgba(8,8,12,0.56);">철도운임 · 별표2 제2호 실비(일반실)</span></span>
+        <span style="color: rgba(8,8,12,0.64);">2026. 7. 10.</span>
+        <span style="text-align: right; color: rgba(8,8,12,0.64);">48,200</span>
+        <span style="text-align: right; font-weight: 700;">48,200</span>
+        <span style="text-align: right; font-weight: 700;">지급</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 44px minmax(0, 1fr) 120px 110px 110px 96px; padding: 18px 0; align-items: baseline; border-bottom: 1px solid rgba(8,8,12,0.14); font-size: 16px;">
+        <span style="font-family: 'Anton', sans-serif; color: #C2500A;">3</span>
+        <span style="display: flex; flex-direction: column; gap: 4px;"><span style="font-family: 'Hahmlet', serif; font-weight: 700; font-size: 18px;">스탠다드 객실, (주)여기어때컴퍼니</span><span style="font-size: 14px; color: #C2500A;">숙박비 · 결제일과 지역 확인 전 <sup>①</sup></span></span>
+        <span style="color: rgba(8,8,12,0.64);">결제 8. 21.</span>
+        <span style="text-align: right; color: rgba(8,8,12,0.64);">100,000</span>
+        <span style="text-align: right; font-weight: 700; color: rgba(8,8,12,0.32);">0</span>
+        <span style="text-align: right; font-weight: 700; color: #C2500A;">확인필요</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 44px minmax(0, 1fr) 120px 110px 110px 96px; padding: 18px 0; align-items: baseline; border-bottom: 1px solid rgba(8,8,12,0.14); font-size: 16px;">
+        <span style="font-family: 'Anton', sans-serif; color: rgba(8,8,12,0.4);">4</span>
+        <span style="display: flex; flex-direction: column; gap: 4px;"><span style="font-family: 'Hahmlet', serif; font-weight: 700; font-size: 18px;">일비 25,000원, 2일</span><span style="font-size: 14px; color: rgba(8,8,12,0.56);">정액 · 별표2, 제16조제3항</span></span>
+        <span style="color: rgba(8,8,12,0.64);">정액</span>
+        <span style="text-align: right; color: rgba(8,8,12,0.32);">—</span>
+        <span style="text-align: right; font-weight: 700;">50,000</span>
+        <span style="text-align: right; font-weight: 700;">지급</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 44px minmax(0, 1fr) 120px 110px 110px 96px; padding: 18px 0; align-items: baseline; border-bottom: 1px solid #08080C; font-size: 16px;">
+        <span style="font-family: 'Anton', sans-serif; color: rgba(8,8,12,0.4);">5</span>
+        <span style="display: flex; flex-direction: column; gap: 4px;"><span style="font-family: 'Hahmlet', serif; font-weight: 700; font-size: 18px;">식비 25,000원, 2일</span><span style="font-size: 14px; color: rgba(8,8,12,0.56);">정액 · 별표2, 제16조제5항</span></span>
+        <span style="color: rgba(8,8,12,0.64);">정액</span>
+        <span style="text-align: right; color: rgba(8,8,12,0.32);">—</span>
+        <span style="text-align: right; font-weight: 700;">50,000</span>
+        <span style="text-align: right; font-weight: 700;">지급</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 44px minmax(0, 1fr) 120px 110px 110px 96px; padding: 18px 0; align-items: baseline; font-size: 17px; font-weight: 700; border-bottom: 4px solid #08080C;">
+        <span></span><span style="font-family: 'Hahmlet', serif;">합계</span><span></span>
+        <span style="text-align: right; color: rgba(8,8,12,0.64);">196,400</span>
+        <span style="text-align: right;">196,400</span>
+        <span></span>
+      </div>
+    </div>
+
+    <aside style="display: flex; flex-direction: column; gap: 28px;">
+      <div style="display: flex; flex-direction: column; gap: 12px; padding-top: 4px;">
+        <div style="font-family: 'Hahmlet', serif; font-weight: 700; font-size: 20px; color: #C2500A;">① 숙박비를 확인해 주세요</div>
+        <p style="margin: 0; font-size: 16px; line-height: 1.75; color: rgba(8,8,12,0.76); text-wrap: pretty;">결제일 2026. 8. 21.이 출장기간 밖이고, 영수증에 숙소명과 주소가 없어 상한액 지역을 정할 수 없습니다. 7. 9. 서울 숙박으로 확인되면 상한 100,000원 이내라 전액 지급됩니다.</p>
+        <div style="font-size: 15px; font-weight: 700; color: #08080C; text-decoration: underline; text-underline-offset: 4px;">실제 숙박일 · 지역 입력하기</div>
+      </div>
+      <div style="height: 1px; background: rgba(8,8,12,0.16);"></div>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div style="font-size: 13px; letter-spacing: 0.08em; color: rgba(8,8,12,0.52);">적용 규정</div>
+        <div style="font-family: 'Hahmlet', serif; font-weight: 700; font-size: 17px;">공무원 여비 규정 별표2 · 제2호</div>
+        <div style="font-size: 15px; line-height: 1.7; color: rgba(8,8,12,0.7);">철도 실비(일반실), 일비·식비 1일 25,000원. 숙박비 상한 서울 100,000 · 광역시 80,000 · 그 밖의 지역 70,000.</div>
+      </div>
+      <div style="height: 56px; border-radius: 999px; background: #08080C; color: #FAF8F2; display: flex; align-items: center; justify-content: center; gap: 12px; font-weight: 700; font-size: 16px;">
+        <span>HWPX 증빙서류 만들기</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF7A2F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg>
+      </div>
+    </aside>
+  </section>
+</div>
+</x-dc>
+</body>
+</html>

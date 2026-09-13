@@ -1,0 +1,150 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+KR:wght@400;500;700&amp;display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #101018; color: #FAF8F2; font-family: 'IBM Plex Sans KR', 'Apple SD Gothic Neo', sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #2FF0E6; } a:hover { color: #FFD23F; }
+  </style>
+</helmet>
+<div style="width: 1440px; min-height: 900px; background: #101018; display: grid; grid-template-columns: 340px minmax(0, 1fr);">
+
+  <aside style="background: #08080C; border-right: 1px solid rgba(250,248,242,0.08); padding: 32px 28px; display: flex; flex-direction: column; gap: 36px;">
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <div style="font-weight: 700; font-size: 18px;">여비정산 증빙</div>
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: rgba(250,248,242,0.48);">run 2026-0709-seoul</div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 6px; padding: 16px; border-radius: 12px; background: rgba(250,248,242,0.04);">
+      <div style="font-size: 13px; color: rgba(250,248,242,0.48);">출장</div>
+      <div style="font-weight: 700; font-size: 16px;">나주 → 서울</div>
+      <div style="font-size: 14px; color: rgba(250,248,242,0.64);">2026. 7. 9.~7. 10. · 2일</div>
+      <div style="font-size: 14px; color: rgba(250,248,242,0.64);">정백철 · 여비 구분 제2호</div>
+    </div>
+
+    <nav style="display: flex; flex-direction: column;">
+      <div style="display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 4px; padding: 16px 0; border-top: 1px solid rgba(250,248,242,0.08);">
+        <span style="font-family: 'Anton', sans-serif; font-size: 40px; line-height: 1; color: rgba(250,248,242,0.24);">01</span>
+        <span style="display: flex; flex-direction: column; gap: 3px;"><span style="font-weight: 700; font-size: 16px;">스캔</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #2FF0E6;">done · 3 receipts</span></span>
+      </div>
+      <div style="display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 4px; padding: 16px 0; border-top: 1px solid rgba(250,248,242,0.08);">
+        <span style="font-family: 'Anton', sans-serif; font-size: 40px; line-height: 1; color: rgba(250,248,242,0.24);">02</span>
+        <span style="display: flex; flex-direction: column; gap: 3px;"><span style="font-weight: 700; font-size: 16px;">규정 조회</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #2FF0E6;">done · MST 287535</span></span>
+      </div>
+      <div style="display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 4px; padding: 16px 0 16px 16px; margin-left: -16px; border-top: 1px solid rgba(250,248,242,0.08); border-left: 3px solid #FFD23F; background: linear-gradient(90deg, rgba(255,210,63,0.10), rgba(255,210,63,0));">
+        <span style="font-family: 'Anton', sans-serif; font-size: 40px; line-height: 1; color: #FFD23F;">03</span>
+        <span style="display: flex; flex-direction: column; gap: 3px;"><span style="font-weight: 700; font-size: 16px;">지급 판정</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #FFD23F;">review · 1 open</span></span>
+      </div>
+      <div style="display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 4px; padding: 16px 0; border-top: 1px solid rgba(250,248,242,0.08); border-bottom: 1px solid rgba(250,248,242,0.08);">
+        <span style="font-family: 'Anton', sans-serif; font-size: 40px; line-height: 1; color: rgba(250,248,242,0.24);">04</span>
+        <span style="display: flex; flex-direction: column; gap: 3px;"><span style="font-weight: 700; font-size: 16px; color: rgba(250,248,242,0.56);">HWPX 생성</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: rgba(250,248,242,0.4);">waiting</span></span>
+      </div>
+    </nav>
+
+    <div style="margin-top: auto; display: flex; flex-direction: column; gap: 10px;">
+      <div style="font-size: 13px; color: rgba(250,248,242,0.48);">인정액</div>
+      <div style="display: flex; align-items: baseline; gap: 6px;">
+        <span style="font-family: 'Anton', sans-serif; font-size: 64px; line-height: 1;">196,400</span>
+        <span style="font-size: 20px; font-weight: 700;">원</span>
+      </div>
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: rgba(250,248,242,0.56);">claimed 196,400 · review 100,000</div>
+    </div>
+  </aside>
+
+  <main style="padding: 32px 40px 40px; display: flex; flex-direction: column; gap: 24px;">
+    <header style="display: flex; justify-content: space-between; align-items: center;">
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #FFD23F;">STEP 03 / 04</div>
+        <h1 style="margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.02em;">지급 판정 검토</h1>
+      </div>
+      <div style="height: 48px; padding: 0 24px; border-radius: 999px; background: #FF7A2F; color: #0B0B0F; display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px;">
+        <span>HWPX 증빙서류 만들기</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg>
+      </div>
+    </header>
+
+    <section style="display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start;">
+      <div style="border-radius: 14px; border: 1px solid rgba(250,248,242,0.1); overflow: hidden; background: #08080C;">
+        <div style="display: grid; grid-template-columns: 54px minmax(0, 1fr) 100px 100px 112px; padding: 12px 18px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: rgba(250,248,242,0.44); border-bottom: 1px solid rgba(250,248,242,0.1);">
+          <span>ID</span><span>ITEM / BASIS</span><span style="text-align: right;">CLAIM</span><span style="text-align: right;">APPROVE</span><span style="text-align: right;">VERDICT</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 54px minmax(0, 1fr) 100px 100px 112px; padding: 14px 18px; align-items: center; border-bottom: 1px solid rgba(250,248,242,0.06); font-size: 15px;">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: rgba(250,248,242,0.4);">r1</span>
+          <span style="display: flex; flex-direction: column; gap: 3px;"><span>철도 · KTX-산천 424 나주 → 용산 · 7. 9.</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: rgba(250,248,242,0.44);">별표2 제2호 철도운임 실비(일반실) · 비고6</span></span>
+          <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; color: rgba(250,248,242,0.6);">48,200</span>
+          <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-weight: 600;">48,200</span>
+          <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #2FF0E6;">PAY</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 54px minmax(0, 1fr) 100px 100px 112px; padding: 14px 18px; align-items: center; border-bottom: 1px solid rgba(250,248,242,0.06); font-size: 15px;">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: rgba(250,248,242,0.4);">r2</span>
+          <span style="display: flex; flex-direction: column; gap: 3px;"><span>철도 · KTX 433 용산 → 나주 · 7. 10.</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: rgba(250,248,242,0.44);">별표2 제2호 철도운임 실비(일반실) · 비고6</span></span>
+          <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; color: rgba(250,248,242,0.6);">48,200</span>
+          <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-weight: 600;">48,200</span>
+          <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #2FF0E6;">PAY</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 54px minmax(0, 1fr) 100px 100px 112px; padding: 14px 18px; align-items: center; border-bottom: 1px solid rgba(250,248,242,0.06); font-size: 15px; background: rgba(255,210,63,0.06);">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #FFD23F;">r3</span>
+          <span style="display: flex; flex-direction: column; gap: 3px;"><span>숙박 · 스탠다드, (주)여기어때컴퍼니 · 결제 8. 21.</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #FFD23F;">OUT_OF_PERIOD · REGION_UNKNOWN</span></span>
+          <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; color: rgba(250,248,242,0.6);">100,000</span>
+          <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: rgba(250,248,242,0.32);">0</span>
+          <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #FFD23F;">REVIEW</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 54px minmax(0, 1fr) 100px 100px 112px; padding: 14px 18px; align-items: center; border-bottom: 1px solid rgba(250,248,242,0.06); font-size: 15px;">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: rgba(250,248,242,0.4);">f1</span>
+          <span style="display: flex; flex-direction: column; gap: 3px;"><span>일비 · 25,000 × 2일</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: rgba(250,248,242,0.44);">별표2 · 제16조제3항</span></span>
+          <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; color: rgba(250,248,242,0.32);">—</span>
+          <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-weight: 600;">50,000</span>
+          <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #2FF0E6;">PAY</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 54px minmax(0, 1fr) 100px 100px 112px; padding: 14px 18px; align-items: center; border-bottom: 1px solid rgba(250,248,242,0.1); font-size: 15px;">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: rgba(250,248,242,0.4);">f2</span>
+          <span style="display: flex; flex-direction: column; gap: 3px;"><span>식비 · 25,000 × 2일</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: rgba(250,248,242,0.44);">별표2 · 제16조제5항</span></span>
+          <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; color: rgba(250,248,242,0.32);">—</span>
+          <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-weight: 600;">50,000</span>
+          <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #2FF0E6;">PAY</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 54px minmax(0, 1fr) 100px 100px 112px; padding: 16px 18px; align-items: center; font-size: 15px; font-weight: 700;">
+          <span></span><span>합계</span>
+          <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; color: rgba(250,248,242,0.6);">196,400</span>
+          <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; color: #FF7A2F;">196,400</span>
+          <span></span>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div style="border-radius: 14px; border: 1px solid rgba(255,210,63,0.5); padding: 20px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #FFD23F;">OPEN · r3 숙박비</div>
+          <div style="font-weight: 700; font-size: 17px; line-height: 1.4;">결제일이 출장기간 밖이고, 숙박 지역을 알 수 없어요</div>
+          <div style="font-size: 14px; line-height: 1.6; color: rgba(250,248,242,0.64);">7. 9. 서울 숙박으로 확인되면 상한 100,000 이내 → 지급 100,000, 인정액 296,400.</div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+            <div style="height: 44px; border-radius: 10px; background: rgba(250,248,242,0.06); border: 1px solid rgba(250,248,242,0.12); display: flex; flex-direction: column; justify-content: center; padding: 0 12px;"><span style="font-size: 11px; color: rgba(250,248,242,0.44);">숙박일</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: rgba(250,248,242,0.36);">YYYY-MM-DD</span></div>
+            <div style="height: 44px; border-radius: 10px; background: rgba(250,248,242,0.06); border: 1px solid rgba(250,248,242,0.12); display: flex; flex-direction: column; justify-content: center; padding: 0 12px;"><span style="font-size: 11px; color: rgba(250,248,242,0.44);">지역</span><span style="font-size: 13px; color: rgba(250,248,242,0.36);">서울 / 광역시 / 그 밖</span></div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <div style="flex-grow: 1; height: 44px; border-radius: 10px; background: #FAF8F2; color: #08080C; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;">반영하고 다시 판정</div>
+            <div style="height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid rgba(250,248,242,0.2); display: flex; align-items: center; font-size: 14px;">제외</div>
+          </div>
+        </div>
+
+        <div style="border-radius: 14px; border: 1px solid rgba(250,248,242,0.1); background: #08080C; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 1.55;">
+          <div style="color: rgba(250,248,242,0.44);">law_snapshot.json</div>
+          <div><span style="color: #2FF0E6;">search_law</span> 공무원 여비 규정 [현행]</div>
+          <div style="color: rgba(250,248,242,0.64);">공포 2026-06-30 · 시행 2026-07-01</div>
+          <div><span style="color: #2FF0E6;">get_annexes</span> 별표2 국내 여비 지급표</div>
+          <div style="color: rgba(250,248,242,0.64);">제2호 숙박 상한 서울 100,000 · 광역시 80,000 · 그 밖 70,000</div>
+          <div><span style="color: #2FF0E6;">get_law_text</span> 제12 · 13 · 16 · 18조</div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+</body>
+</html>
