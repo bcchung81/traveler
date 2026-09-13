@@ -54,6 +54,12 @@ class JobManager:
             self._pool.submit(self._run, job, fn)
         return job
 
+    def alias(self, key: str, new_key: str) -> None:
+        """출장 폴더 이름이 바뀌면 같은 작업을 새 주소에서도 찾게 한다."""
+        with self._lock:
+            if key in self._jobs:
+                self._jobs[new_key] = self._jobs[key]
+
     def get(self, key: str) -> Job | None:
         with self._lock:
             return self._jobs.get(key)

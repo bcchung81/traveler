@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_steps.html" import steps %}
 {% block title %}서류 완성 · 여비정산 증빙{% endblock %}
-{% block meta %}{{ status.traveler }} · {{ status.trip_id }}{% endblock %}
+{% block meta %}{{ status.traveler }} · {{ status.display_name }}{% endblock %}
 {% block cta %}
 {% if current and not (job and job.active) %}
 <a class="cta" href="{{ base }}/v/{{ current.version }}/evidence.hwpx" download>

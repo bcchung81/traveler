@@ -10,16 +10,21 @@ from .vlm_process import VlmManager
 
 log = logging.getLogger("receipt_evidence.web")
 
-def do_extract(settings, clients: Clients, vlm: VlmManager, traveler: str, trip_id: str) -> int:
+def do_extract(settings, clients: Clients, vlm: VlmManager, traveler: str, trip_id: str, service=None) -> str:
+    """영수증을 읽고, 임시 폴더(또는 자동으로 이름 붙인 폴더)면 읽은 값으로 YYYY-MM-DD_출장지 이름을 붙인다. 최종 출장 폴더 이름을 돌려준다."""
     try:
-        work = extract_trip(settings.data_dir, settings.out_dir, clients, traveler, trip_id, on_vlm_needed=vlm.ensure_ready)
+        extract_trip(settings.data_dir, settings.out_dir, clients, traveler, trip_id, on_vlm_needed=vlm.ensure_ready)
     finally:
         vlm.stop()
     try:  # 판정 화면이 바로 열리도록 규정을 미리 확보한다. 실패해도 영수증 읽기는 성공으로 둔다
         get_law_book(clients.law, settings.out_dir / ".cache", date.today())
     except Exception:
         log.exception("규정 미리 받기 실패")
-    return len(work.receipts)
+    if service is None or (service.trip_dir(traveler, trip_id) / "trip.yaml").exists():
+        return trip_id
+    s = service.trip_suggestion(traveler, trip_id)
+    start, dest = s.get("start_date"), s.get("destination_region")
+    return service.auto_rename(traveler, trip_id, start.value if start else None, dest.value if dest else None)
 
 def do_warm_law(settings, clients: Clients) -> str:
     return get_law_book(clients.law, settings.out_dir / ".cache", date.today()).current.mst

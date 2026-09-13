@@ -15,12 +15,13 @@
   <h2 class="title">{{ traveler }}</h2>
   <div class="trip-grid">
   {% for t in items %}
-    {% set page = {"empty": "upload", "uploaded": "upload", "extracted": "review", "documented": "result"}[t.stage] %}
-    {% set label = {"empty": "영수증 없음", "uploaded": "읽기 전", "extracted": "판정 전", "documented": "서류 완성"}[t.stage] %}
+    {% set confirm = t.stage == "extracted" and t.proposed %}
+    {% set page = "extract" if confirm else {"empty": "upload", "uploaded": "upload", "extracted": "review", "documented": "result"}[t.stage] %}
+    {% set label = "출장 정보 확인" if confirm else {"empty": "영수증 없음", "uploaded": "읽기 전", "extracted": "판정 전", "documented": "서류 완성"}[t.stage] %}
     <a class="panel trip-card" href="/t/{{ t.traveler|urlencode }}/{{ t.trip_id|urlencode }}/{{ page }}">
       {% if t.review_count %}<span class="sticker sticker--right">확인필요 {{ t.review_count }}</span>{% endif %}
       <div class="stack">
-        <div class="trip-card__id">{{ t.trip_id }}</div>
+        <div class="trip-card__id">{{ t.display_name }}</div>
         <div class="hint">{{ t.start_date|kdate }}{% if t.end_date %}~{{ t.end_date|kdate }}{% endif %} · 영수증 {{ t.files }}건{% if t.proposed %} · 출장 정보 미확정{% endif %}</div>
       </div>
       <div class="row">

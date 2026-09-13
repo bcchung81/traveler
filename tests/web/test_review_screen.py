@@ -1,6 +1,6 @@
 # tests/web/test_review_screen.py
 from urllib.parse import unquote
-from helpers import new_trip
+from helpers import new_trip, png_bytes, upload_new
 
 BASE = "/t/정백철/2026-07-09_서울"
 FILES = (("k1.png", (10, 20, 30)), ("k2.png", (40, 50, 60)), ("stay.png", (70, 80, 90)))
@@ -28,7 +28,10 @@ def test_review_warms_law_when_cache_missing(web):
     assert page.status_code == 200 and "148,200" in page.text
 
 def test_review_redirects_before_extraction(web):
-    new_trip(web)
+    from datetime import date
+    s = web.deps.service
+    s.create_trip("정백철", date(2026, 7, 9), "서울")
+    s.save_files("정백철", "2026-07-09_서울", [("k1.png", png_bytes((10, 20, 30)))])
     r = web.get(f"{BASE}/review")
     assert r.status_code == 303 and unquote(r.headers["location"]) == f"{BASE}/upload"
 
@@ -62,7 +65,7 @@ def test_offline_extract_and_review_use_stored_law(web):
 def test_stale_files_block_document_creation(web):
     new_trip(web)
     web.post(f"{BASE}/extract")
-    web.post(f"{BASE}/files", files=[("files", ("k2.png", png_bytes((40, 50, 60)), "image/png"))])
+    (web.deps.service.trip_dir("정백철", "2026-07-09_서울") / "k2.png").write_bytes(png_bytes((40, 50, 60)))  # 탐색기로 넣은 파일
     page = web.get(f"{BASE}/review")
     assert "파일이 바뀌었어요" in page.text and "HWPX 증빙서류 만들기" not in page.text
     r = web.post(f"{BASE}/finalize")
@@ -71,8 +74,7 @@ def test_stale_files_block_document_creation(web):
 
 def test_review_flags_same_file_in_another_trip(web):
     new_trip(web)
-    web.post("/new", data={"traveler": "정백철", "start_date": "2026-08-03", "destination_region": "부산"},
-             files=[("files", ("again.png", png_bytes((10, 20, 30)), "image/png"))])
-    web.post(f"{BASE}/extract")
+    r = upload_new(web, files=(("again.png", (10, 20, 30)),))
+    assert unquote(r.headers["location"]) == f"{BASE}_2/extract"  # 같은 날짜·출장지 폴더가 있으면 _2
     page = web.get(f"{BASE}/review")
-    assert "다른 출장" in page.text and "2026-08-03_부산" in page.text
+    assert "다른 출장" in page.text and "2026-07-09_서울_2" in page.text

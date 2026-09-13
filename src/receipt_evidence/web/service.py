@@ -10,12 +10,15 @@ from ..ingest import SUPPORTED, sha256_file
 from ..law import LawBook, load_law_book, peek_law_book
 from ..models import Category, PipelineResult, Receipt, ReceiptImage, TravelerProfile
 from ..versioning import read_latest
-from ..workspace import (TRIP_DIR_RE, TRIP_YAML_FIELDS, HashCache, NotFound, apply_overrides, load_overrides, load_traveler, nfc,
-                         trip_file_owners)
+from ..workspace import (STAGING_PREFIX, TRIP_DIR_RE, TRIP_YAML_FIELDS, HashCache, NotFound, Suggestion, apply_overrides, is_staging,
+                         load_overrides, load_traveler, move_trip, nfc, resolve_moved, staging_trip_id, suggest_trip, trip_file_owners,
+                         unique_trip_id, was_auto_named)
 
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024
 PROFILE_FIELDS = ("position", "grade", "org", "dept", "workplace_region", "approval")
 GRADES = ("제1호", "제2호")
+DEFAULT_GRADE = "제2호"  # 새 출장자 기본값(일반 공무원·직원). 확인 카드에서 바꿀 수 있다
+CONFIRM_TRIP_FIELDS = ("start_date", "end_date", "destination_region", "route_stations", "lodging_region")
 IMAGE_ID_RE = re.compile(r"^[0-9a-f]{12}-p\d+$")
 WARNING_CODE_RE = re.compile(r"^[A-Z_]{3,40}$")
 VERSION_FILES = ("evidence.hwpx", "preview.html", "changes.md", "report.md")
@@ -26,6 +29,12 @@ EDITABLE_RECEIPT_FIELDS = (("category", "paid_at") + RECEIPT_TEXT_FIELDS + RECEI
 
 class InvalidName(ValueError):
     """경로 성분(출장자·출장·파일명·이미지 id·버전 파일)이 규칙에 맞지 않음."""
+
+class TripMoved(Exception):
+    """출장 폴더 이름이 바뀌어 옛 주소로 들어옴 — 새 주소로 보낸다."""
+    def __init__(self, traveler: str, old: str, new: str):
+        super().__init__(f"{traveler}/{old} → {new}")
+        self.traveler, self.old, self.new = traveler, old, new
 
 @dataclass(frozen=True)
 class FileInfo:
@@ -61,6 +70,8 @@ class TripSummary:
     verify_ok: bool | None
     proposed: bool
     stage: str
+    staging: bool = False
+    display_name: str = ""
 
 def _name(value: object) -> str:
     s = nfc(str(value)).strip()
@@ -143,16 +154,83 @@ class TripService:
         self.trip_dir(t, trip_id).mkdir(parents=True, exist_ok=True)
         return t, trip_id
 
-    def save_files(self, traveler: str, trip_id: str, files: list[tuple[str, bytes]]) -> list[str]:
-        d = self.trip_dir(traveler, trip_id)
+    @staticmethod
+    def check_uploads(files: list[tuple[str, bytes]]) -> list[tuple[str, bytes]]:
+        """전부 검증한 뒤에 저장한다(일부만 저장되거나 빈 출장 폴더가 남는 일 방지)."""
         prepared = []
-        for raw_name, content in files:  # 전부 검증한 뒤에 저장한다(일부만 저장되는 일 방지)
+        for raw_name, content in files:
             name = _name(Path(nfc(raw_name).replace("\\", "/")).name)
             if Path(name).suffix.lower() not in SUPPORTED:
                 raise ValueError(f"{name}: 지원하지 않는 확장자예요(jpg·png·pdf·heic)")
             if len(content) > MAX_UPLOAD_BYTES:
                 raise ValueError(f"{name}: 파일이 30MB를 넘어요")
             prepared.append((name, content))
+        return prepared
+
+    def travelers(self) -> list[str]:
+        if not self.data_dir.exists():
+            return []
+        names = []
+        for p in sorted(self.data_dir.iterdir(), key=lambda p: nfc(p.name)):
+            try:
+                if p.is_dir():
+                    names.append(_name(p.name))
+            except InvalidName:
+                continue
+        return names
+
+    def ensure_traveler(self, traveler: str) -> str:
+        """출장자 폴더를 만들고, 여비 구분이 정해지지 않았으면 제2호를 기본으로 적어 둔다."""
+        t = _name(traveler)
+        path = self.traveler_dir(t) / "traveler.yaml"
+        data = _yaml_load(path)
+        if not data.get("grade"):
+            data["grade"] = DEFAULT_GRADE
+            _yaml_dump(path, data)
+        return t
+
+    def create_staging_trip(self, traveler: str, files: list[tuple[str, bytes]]) -> tuple[str, str]:
+        """첫 화면: 출장 정보 없이 영수증만 받아 임시 출장 폴더에 저장한다."""
+        prepared = self.check_uploads(files)
+        if not prepared:
+            raise ValueError("영수증 파일을 올려 주세요")
+        t = self.ensure_traveler(traveler)
+        trip_id = unique_trip_id(self.data_dir, t, staging_trip_id())
+        self.trip_dir(t, trip_id).mkdir(parents=True)
+        self.save_files(t, trip_id, prepared)
+        return t, trip_id
+
+    def trip_suggestion(self, traveler: str, trip_id: str) -> dict[str, Suggestion]:
+        return suggest_trip(trip_id, self.receipts(traveler, trip_id), self.load_profile(traveler).workplace_region)
+
+    def moved_to(self, traveler: str, trip_id: str) -> str | None:
+        if self.trip_dir(traveler, trip_id).is_dir():
+            return None
+        return resolve_moved(self.out_dir, _name(traveler), _name(trip_id))
+
+    def auto_rename(self, traveler: str, trip_id: str, start: date | None, destination: str | None) -> str:
+        """임시 폴더나 자동으로 이름 붙인 폴더(서류 전)만 YYYY-MM-DD_출장지로 바꾼다. 최종 이름을 돌려준다."""
+        t, trip = _name(traveler), _name(trip_id)
+        if not start or _blank(destination):
+            return trip
+        if not (is_staging(trip) or was_auto_named(self.out_dir, t, trip)) or (self.trip_out(t, trip) / "latest.json").exists():
+            return trip
+        base_id = _name(f"{start.isoformat()}_{_name(destination).replace('_', ' ')}")
+        if re.fullmatch(re.escape(base_id) + r"(_\d+)?", trip):
+            return trip
+        return move_trip(self.data_dir, self.out_dir, t, trip, unique_trip_id(self.data_dir, t, base_id))
+
+    def confirm_trip(self, traveler: str, trip_id: str, fields: dict) -> str:
+        """확인 카드: 출장 정보는 trip.yaml, 근무지·여비 구분은 traveler.yaml. 폴더 이름도 확정값에 맞춘다."""
+        t, trip = _name(traveler), _name(trip_id)
+        self.save_profile(t, {k: fields[k] for k in ("grade", "workplace_region") if k in fields})
+        self.save_trip_yaml(t, trip, {k: fields[k] for k in CONFIRM_TRIP_FIELDS if k in fields})
+        y = self.load_trip_yaml(t, trip)
+        return self.auto_rename(t, trip, y.get("start_date"), y.get("destination_region"))
+
+    def save_files(self, traveler: str, trip_id: str, files: list[tuple[str, bytes]]) -> list[str]:
+        d = self.trip_dir(traveler, trip_id)
+        prepared = self.check_uploads(files)
         d.mkdir(parents=True, exist_ok=True)
         saved = []
         for name, content in prepared:
@@ -335,10 +413,16 @@ class TripService:
             stage = "documented"
         else:
             stage = "extracted"
+        staging = trip_id.startswith(STAGING_PREFIX)
+        display = trip_id
+        if staging:
+            sm = re.match(rf"{re.escape(STAGING_PREFIX)}\d{{4}}(\d{{2}})(\d{{2}})-(\d{{2}})(\d{{2}})", trip_id)
+            display = f"새 정산 ({int(sm.group(1))}. {int(sm.group(2))}. {sm.group(3)}:{sm.group(4)})" if sm else "새 정산"
         return TripSummary(traveler=t, trip_id=trip_id, start_date=trip_yaml.get("start_date") or folder_date, end_date=trip_yaml.get("end_date"),
                            destination=trip_yaml.get("destination_region") or (m.group(2) if m else ""), files=len(files),
                            extracted=extracted, stale=stale, version=version, claimed=claimed, approved=approved,
-                           review_count=review_count, verify_ok=verify_ok, proposed=not (d / "trip.yaml").exists(), stage=stage)
+                           review_count=review_count, verify_ok=verify_ok, proposed=not (d / "trip.yaml").exists(), stage=stage,
+                           staging=staging, display_name=display)
 
     def list_trips(self) -> list[TripSummary]:
         if not self.data_dir.exists():

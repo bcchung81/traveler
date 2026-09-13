@@ -8,17 +8,19 @@ BASE = "/t/정백철/2026-07-09_서울"
 def test_new_trip_creates_folder_yaml_and_files(web):
     assert web.get("/new").status_code == 200
     r = new_trip(web)
-    assert r.status_code == 303 and unquote(r.headers["location"]) == f"{BASE}/upload"
+    assert r.status_code == 303 and unquote(r.headers["location"]) == f"{BASE}/extract"
     s = web.deps.service
     assert [f.name for f in s.list_files("정백철", "2026-07-09_서울")] == ["k1.png"]
     assert s.load_profile("정백철").grade == "제2호" and s.load_trip_yaml("정백철", "2026-07-09_서울")["route_stations"] == ["나주", "용산"]
     page = web.get(f"{BASE}/upload")
-    assert page.status_code == 200 and "k1.png" in page.text and 'value="회의"' in page.text and "step--current" in page.text
-    assert "영수증 읽기 시작" in page.text
+    assert page.status_code == 200 and "k1.png" in page.text and "step--current" in page.text and "다시 읽기" in page.text
+    assert 'name="purpose"' not in page.text  # 올리기 화면에는 출장 정보 입력칸이 없다
 
 def test_upload_add_delete_info_and_errors(web):
     new_trip(web)
-    assert web.post(f"{BASE}/files", files=[("files", ("k2.png", png_bytes((40, 50, 60)), "image/png"))]).status_code == 303
+    r = web.post(f"{BASE}/files", files=[("files", ("k2.png", png_bytes((40, 50, 60)), "image/png"))])
+    assert r.status_code == 303 and unquote(r.headers["location"]) == f"{BASE}/extract"  # 올리면 바로 읽는다
+    assert len(web.deps.service.receipts("정백철", "2026-07-09_서울")) == 2
     assert "k2.png" in web.get(f"{BASE}/upload").text
     assert web.post(f"{BASE}/files", files=[("files", ("memo.txt", b"x", "text/plain"))]).status_code == 400
     assert web.post(f"{BASE}/files/delete", data={"name": "k2.png"}).status_code == 303

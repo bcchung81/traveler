@@ -1,6 +1,7 @@
 # tests/helpers.py
 """파이프라인 테스트용: 단색 영수증 이미지를 만들고, 이미지 색으로 영수증을 식별해 답하는 가짜 VLM."""
 import base64, io, json, threading
+from urllib.parse import unquote
 from datetime import date
 from pathlib import Path
 from PIL import Image
@@ -78,8 +79,18 @@ def png_bytes(rgb, size=(240, 480)) -> bytes:
     Image.new("RGB", size, rgb).save(buf, "PNG")
     return buf.getvalue()
 
-NEW_TRIP_FORM = {"traveler": "정백철", "grade": "제2호", "workplace_region": "나주", "approval": "담당, 팀장",
-                 "destination_region": "서울", "start_date": "2026-07-09", "end_date": "2026-07-10", "purpose": "회의", "route_stations": "나주, 용산"}
+TRIP_CONFIRM = {"start_date": "2026-07-09", "end_date": "2026-07-10", "destination_region": "서울", "workplace_region": "나주",
+                "grade": "제2호", "route_stations": "나주, 용산"}
+DOC_INFO = {"purpose": "회의", "approval": "담당, 팀장"}
 
-def new_trip(client, files=(("k1.png", (10, 20, 30)),)):
-    return client.post("/new", data=NEW_TRIP_FORM, files=[("files", (n, png_bytes(rgb), "image/png")) for n, rgb in files])
+def upload_new(client, files=(("k1.png", (10, 20, 30)),), traveler="정백철", **form):
+    """새 정산 첫 화면: 출장자와 영수증 파일만 올린다(작업은 inline이라 읽기·자동 이름 변경까지 끝남)."""
+    return client.post("/new", data={"traveler_new": traveler} | form, files=[("files", (n, png_bytes(rgb), "image/png")) for n, rgb in files])
+
+def new_trip(client, files=(("k1.png", (10, 20, 30)),), traveler="정백철"):
+    """올리기 → 자동 읽기 → 출장 정보 확정 → 서류 정보까지. 이전 테스트가 기대하던 출장(2026-07-09~10 서울)을 만든다."""
+    r = upload_new(client, files, traveler)
+    base = unquote(r.headers["location"]).rsplit("/", 1)[0]
+    client.post(f"{base}/trip", data=TRIP_CONFIRM)
+    client.post(f"{base}/docinfo", data=DOC_INFO)
+    return r

@@ -1,6 +1,6 @@
 # tests/web/test_extract_screen.py
 from urllib.parse import unquote
-from helpers import new_trip
+from helpers import new_trip, upload_new
 
 BASE = "/t/정백철/2026-07-09_서울"
 
@@ -26,10 +26,12 @@ def test_extract_flow_edit_and_image(web):
     assert web.get(f"{BASE}/job").headers.get("HX-Refresh") == "true"
 
 def test_extract_error_panel_when_vlm_down(web):
-    new_trip(web)
     web.vlm_fake._healthy = False
     web.deps.vlm.health = lambda: False
     web.deps.vlm.popen = lambda *a, **k: None   # 켜기 실패 재현(프로세스 없음)
-    web.post(f"{BASE}/extract")
-    page = web.get(f"{BASE}/extract")
+    r = upload_new(web)
+    location = unquote(r.headers["location"])
+    assert "/_새정산-" in location  # 읽지 못했으면 출장 정보를 몰라 임시 폴더 그대로
+    page = web.get(location)
     assert page.status_code == 200 and "llama-server" in page.text and "다시 읽기" in page.text
+    assert "새 정산" in web.get("/").text

@@ -1,12 +1,11 @@
 {% extends "base.html" %}
 {% from "_steps.html" import steps %}
 {% block title %}지급 판정 검토 · 여비정산 증빙{% endblock %}
-{% block meta %}{{ status.traveler }} · {{ status.trip_id }}{% if review %} · 여비 구분 {{ review.trip.grade or "미확정" }}{% endif %}{% endblock %}
+{% block meta %}{{ status.traveler }} · {{ status.display_name }}{% if review %} · 여비 구분 {{ review.trip.grade or "미확정" }}{% endif %}{% endblock %}
 {% block cta %}
 {% if review and not (job and job.active) and not status.stale %}
-<form method="post" action="{{ base }}/finalize">
-  <button class="cta" type="submit">HWPX 증빙서류 만들기 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></button>
-</form>
+  <button class="cta" type="submit" form="docinfo" name="next" value="finalize">HWPX 증빙서류 만들기 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></button>
+
 {% endif %}
 {% endblock %}
 {% block content %}
@@ -37,6 +36,29 @@
         <div class="hint" style="color:rgba(250,248,242,0.7)">공무원 여비 규정 · {{ law.effective|kdate }} 시행</div>
         {% for n in law_notes %}<div class="hint" style="color:var(--yellow)">※ {{ n }}</div>{% endfor %}
       </section>
+
+      {% if ask_vehicle %}
+      <section class="panel question">
+        <h2 class="title title--sm">공용차량을 이용했나요?</h2>
+        <div class="hint">교통 영수증이 없어요. 공용차량을 이용했으면 일비를 2분의 1로 지급해요(제16조제3항).</div>
+        <form method="post" action="{{ base }}/resolve" class="row">
+          <button class="btn btn--yellow btn--small" type="submit" name="official_vehicle" value="on">예, 공용차량</button>
+          <button class="btn btn--small" type="submit" name="official_vehicle" value="">아니요</button>
+        </form>
+      </section>
+      {% endif %}
+      {% if ask_in_city %}
+      <section class="panel question">
+        <h2 class="title title--sm">근무지 내 출장인가요?</h2>
+        <div class="hint">근무지와 출장지가 같아요. 같은 시·군 안이거나 12km 미만이면 정액으로 지급해요(제18조).</div>
+        <form method="post" action="{{ base }}/resolve" class="row">
+          <input type="hidden" name="within_workplace" value="on">
+          <input class="input input--inline" type="number" name="duration_hours" min="0" step="0.5" placeholder="출장 시간" aria-label="출장 시간(시간)" required>
+          <button class="btn btn--yellow btn--small" type="submit">예, 근무지 내</button>
+        </form>
+        <form method="post" action="{{ base }}/resolve"><button class="btn btn--small" type="submit" name="within_workplace" value="">아니요</button></form>
+      </section>
+      {% endif %}
 
       {% if review_count %}
       <section class="panel">
@@ -94,6 +116,23 @@
       {% endif %}
     </div>
 
+    <div class="stack" style="gap:28px">
+    <form method="post" action="{{ base }}/docinfo" id="docinfo" class="panel docinfo-panel">
+      <details {% if doc_open %}open{% endif %}>
+        <summary class="row row--between"><h2 class="title title--sm">서류에 들어갈 정보</h2><span class="hint">{{ doc.purpose or "출장 목적 없음" }}{% if doc.approval %} · 결재 {{ doc.approval }}{% endif %}</span></summary>
+        <div class="stack" style="margin-top:12px">
+          <div class="field"><label for="d_purpose">출장 목적 <span class="hint">· 이번 출장</span></label><input class="input" id="d_purpose" name="purpose" placeholder="예: 기관 협의 회의 참석" value="{{ doc.purpose }}"></div>
+          {% if not doc.purpose %}<div class="hint">출장 목적이 비어 있어요 — 비워 두면 서류에 '-'로 들어가요.</div>{% endif %}
+          <div class="grid2">
+            <div class="field"><label for="d_org">기관명 <span class="hint">· 기억해 둬요</span></label><input class="input" id="d_org" name="org" value="{{ doc.org }}"></div>
+            <div class="field"><label for="d_dept">부서</label><input class="input" id="d_dept" name="dept" value="{{ doc.dept }}"></div>
+          </div>
+          <div class="field"><label for="d_approval">결재선 <span class="hint">· 쉼표로 구분</span></label><input class="input" id="d_approval" name="approval" placeholder="예: 담당, 팀장, 부장" value="{{ doc.approval }}"></div>
+          <button class="btn btn--small" type="submit" name="next" value="review">저장만 하기</button>
+        </div>
+      </details>
+    </form>
+
     <section class="panel" style="padding:0;overflow:hidden">
       <div class="row row--between" style="padding:18px 24px;border-bottom:3px solid var(--ink);background:var(--white)">
         <h2 class="title">지급대상 한눈에</h2><span class="hint">금액 단위 원</span>
@@ -118,6 +157,7 @@
       </table>
       </div>
     </section>
+    </div>
   </div>
 {% endif %}
 {% endblock %}

@@ -12,9 +12,14 @@
 {%- endif %}
 {%- endmacro %}
 
-{% macro steps(base, active, done=(), subs={}) %}
-<section class="steps" aria-label="진행 단계">
+{% macro steps(base, active, done=(), subs={}, compact=False) %}
 {% set items = [(1, "영수증 올리기", "upload", "사진·스크린샷·PDF 모두 괜찮아요"), (2, "읽은 값 확인", "extract", "로컬 AI가 읽은 값을 확인해요"), (3, "지급 판정", "review", "공무원 여비 규정으로 가려요"), (4, "서류 만들기", "result", "HWPX 증빙내역서 + 붙임")] %}
+{% if compact %}
+<ol class="steps-line" aria-label="진행 단계">
+{% for n, title, path, sub in items %}<li class="{{ 'is-current' if n == active else ('is-done' if n in done else '') }}"><span class="num">0{{ n }}</span> {{ title }}</li>{% endfor %}
+</ol>
+{% else %}
+<section class="steps" aria-label="진행 단계">
 {% for n, title, path, sub in items %}
   {% set state = "current" if n == active else ("done" if n in done else "future") %}
   {% set tag = "a" if base and (state != "future" or n == active + 1) else "div" %}
@@ -33,4 +38,5 @@
   </{{ tag }}>
 {% endfor %}
 </section>
+{% endif %}
 {% endmacro %}

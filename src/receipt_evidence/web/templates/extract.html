@@ -1,10 +1,15 @@
 {% extends "base.html" %}
 {% from "_steps.html" import steps %}
 {% block title %}읽은 값 확인 · 여비정산 증빙{% endblock %}
-{% block meta %}{{ status.traveler }} · {{ status.trip_id }}{% endblock %}
+{% block meta %}{{ status.traveler }} · {{ status.display_name }}{% endblock %}
+{% set arrow %}<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg>{% endset %}
 {% block cta %}
 {% if receipts and not (job and job.active) %}
-<a class="cta" href="{{ base }}/review">맞아요, 규정 확인하기 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></a>
+{% if trip_confirmed %}
+<a class="cta" href="{{ base }}/review">맞아요, 규정 확인하기 {{ arrow }}</a>
+{% else %}
+<button class="cta" type="submit" form="trip-form">맞아요, 규정 확인하기 {{ arrow }}</button>
+{% endif %}
 {% endif %}
 {% endblock %}
 {% block content %}
@@ -28,6 +33,46 @@
   {% endif %}
 
   {% if receipts %}
+  {% macro auto(f) %}{% if f.auto %}<span class="chip chip--auto" title="{{ f.basis }}">자동{% if f.guessed %} · 확인{% endif %}</span>{% endif %}{% endmacro %}
+  {% macro basis(f) %}{% if f.auto %}<span class="hint basis-hint">{{ f.basis }}</span>{% endif %}{% endmacro %}
+  {% set F = trip_fields %}
+  {% set trip_form %}
+    <input type="hidden" name="route_stations" value="{{ (F.route_stations.value or [])|join(', ') }}">
+    <div class="trip-grid">
+      <div class="field"><label for="t_start">출장 시작 {{ auto(F.start_date) }}</label><input class="input" type="date" id="t_start" name="start_date" value="{{ F.start_date.value or '' }}">{{ basis(F.start_date) }}</div>
+      <div class="field"><label for="t_end">출장 종료 {{ auto(F.end_date) }}</label><input class="input" type="date" id="t_end" name="end_date" value="{{ F.end_date.value or '' }}">{{ basis(F.end_date) }}</div>
+      <div class="field"><label for="t_dest">출장지 {{ auto(F.destination_region) }}</label><input class="input" id="t_dest" name="destination_region" placeholder="예: 서울" value="{{ F.destination_region.value or '' }}">{{ basis(F.destination_region) }}</div>
+      <div class="field"><label for="t_work">근무지 {{ auto(F.workplace_region) }}</label><input class="input" id="t_work" name="workplace_region" placeholder="예: 나주" value="{{ F.workplace_region.value or '' }}">{{ basis(F.workplace_region) }}</div>
+      {% if has_lodging %}
+      <div class="field"><label for="t_lodge">숙박한 도시 {{ auto(F.lodging_region) }}</label><input class="input" id="t_lodge" name="lodging_region" placeholder="숙박 영수증에 지역이 없을 때" value="{{ F.lodging_region.value or '' }}">{{ basis(F.lodging_region) }}</div>
+      {% endif %}
+      <div class="field">
+        <span class="label">여비 구분</span>
+        <div class="seg">
+          <label><input type="radio" name="grade" value="제1호" {% if grade == "제1호" %}checked{% endif %}><span>제1호</span></label>
+          <label><input type="radio" name="grade" value="제2호" {% if grade == "제2호" %}checked{% endif %}><span>제2호</span></label>
+        </div>
+      </div>
+    </div>
+    {% if F.route_stations.value %}<div class="hint">경로 {{ F.route_stations.value|join(" → ") }}</div>{% endif %}
+    {% if payer_mismatch %}<div class="banner" role="status">영수증 결제자({{ payer_mismatch|join(", ") }})가 출장자({{ status.traveler }})와 달라요. 본인 출장이 맞는지 확인해 주세요.</div>{% endif %}
+  {% endset %}
+  {% if trip_confirmed %}
+  <details class="panel trip-summary">
+    <summary><span class="title title--sm">출장 정보</span> <span class="hint">{{ F.start_date.value|kdate }}~{{ F.end_date.value|kdate }} · {{ F.destination_region.value or "출장지 미정" }}{% if F.route_stations.value %} · {{ F.route_stations.value|join(" → ") }}{% endif %} · 고치기</span></summary>
+    <form method="post" action="{{ base }}/trip" id="trip-form" class="stack">
+      <input type="hidden" name="next" value="extract">
+      {{ trip_form }}
+      <button class="btn btn--yellow btn--small" type="submit">출장 정보 저장</button>
+    </form>
+  </details>
+  {% else %}
+  <form method="post" action="{{ base }}/trip" id="trip-form" class="panel stack">
+    <div class="row row--between"><h2 class="title title--sm">출장 정보</h2><span class="hint">영수증으로 채웠어요 · 틀린 칸만 고쳐 주세요</span></div>
+    {{ trip_form }}
+    <div class="row"><button class="btn btn--yellow" type="submit">맞아요</button><span class="hint">영수증 값이 틀렸으면 아래에서 먼저 고쳐도 돼요</span></div>
+  </form>
+  {% endif %}
   <div class="layout-extract">
     <section class="panel">
       <h2 class="title title--sm">읽은 영수증 {{ receipts|length }}건</h2>

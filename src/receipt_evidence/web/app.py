@@ -5,7 +5,7 @@ from contextlib import AbstractContextManager, asynccontextmanager, contextmanag
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlsplit
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -16,7 +16,7 @@ from ..pipeline import Clients
 from ..vlm import LlamaServerClient
 from ..workspace import NotFound
 from .jobs import JobManager
-from .service import InvalidName, TripService
+from .service import InvalidName, TripMoved, TripService
 from .vlm_process import VlmManager, default_vlm_manager
 
 WEB_DIR = Path(__file__).parent
@@ -104,6 +104,18 @@ def create_app(settings: WebSettings, deps: WebDeps | None = None) -> FastAPI:
     @app.exception_handler(ValueError)
     async def bad_value(request: Request, exc: ValueError):
         return error_page(request, 400, "입력한 값을 확인해 주세요", _friendly(exc))
+
+    @app.exception_handler(TripMoved)
+    async def trip_moved(request: Request, exc: TripMoved):
+        """읽은 뒤 출장 폴더 이름이 바뀐 경우: 옛 주소를 새 주소로. htmx 폴링은 보고 있던 화면 주소를 바꿔 HX-Redirect."""
+        old, new = f"/t/{exc.traveler}/{exc.old}", trip_base(exc.traveler, exc.new)
+        swap = lambda path: new + path[len(old):] if path.startswith(old) else new + "/extract"
+        if request.headers.get("hx-request"):
+            current = urlsplit(request.headers.get("hx-current-url", ""))
+            target = swap(unquote(current.path)) + (f"?{current.query}" if current.query else "")
+            return HTMLResponse("", headers={"HX-Redirect": quote(unquote(target), safe="/?=&")})
+        target = swap(request.url.path) + (f"?{request.url.query}" if request.url.query else "")
+        return RedirectResponse(target, status_code=303 if request.method in ("GET", "HEAD") else 307)
 
     # 사용자가 가리킨 대상이 없을 때만 404. 코드 버그로 난 KeyError 등은 가리지 않는다
     @app.exception_handler(FileNotFoundError)

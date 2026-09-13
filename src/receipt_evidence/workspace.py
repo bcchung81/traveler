@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 from .ingest import SUPPORTED, sha256_file
 from .models import Category, Receipt, TravelerProfile, TripConfig
-from .stations import place_of
+from .stations import city_name, place_of
 from .validate import FIELD_GROUP, mark_dup_approval, validate_receipt
 
 TRIP_DIR_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})_([^_]+)")
@@ -172,7 +172,7 @@ def _leg_label(r: Receipt) -> str:
 def _place(name: str) -> tuple[str, bool]:
     """(도시, 추정 여부). 표에 없는 이름은 그대로 쓰고 추정으로 본다."""
     city = place_of(name)
-    return (city, False) if city else (nfc(name).strip(), True)
+    return (city, False) if city else (city_name(name) or nfc(name).strip(), True)
 
 def suggest_trip(trip_id: str, receipts: list[Receipt], workplace: str = "") -> dict[str, Suggestion]:
     """영수증으로 출장 정보를 채운다. 결제일(사전 예매)과 영수증의 가맹점 주소(region)는 기간·출장지 근거로 쓰지 않는다."""

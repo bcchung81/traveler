@@ -16,6 +16,7 @@ def _vlm_up() -> bool:
     return LlamaServerClient(timeout=2.0).healthy()
 
 def _wait_job(client, timeout: float = 900):
+    """읽기가 끝나면 임시 폴더가 2026-07-09_서울로 바뀌므로, 최종 주소에서 작업 끝을 기다린다."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if client.get(f"{BASE}/job").headers.get("HX-Refresh") == "true":
@@ -32,16 +33,19 @@ def test_web_e2e_real_receipts_on_demand_vlm(tmp_path):
     settings = WebSettings(data_dir=tmp_path / "data", out_dir=tmp_path / "out", allowed_hosts=["testserver"])
     deps = default_deps(settings)
     with TestClient(create_app(settings, deps), follow_redirects=False) as client:
-        form = {"traveler": "정백철", "grade": "제2호", "workplace_region": "나주", "approval": "담당, 팀장, 부장",
-                "destination_region": "서울", "start_date": "2026-07-09", "end_date": "2026-07-10", "route_stations": "나주, 용산"}
         files = [("files", (name, SRC[name].read_bytes(), "application/octet-stream")) for name in FILES]
-        assert client.post("/new", data=form, files=files).status_code == 303
-        assert client.post(f"{BASE}/extract").status_code == 303
+        r = client.post("/new", data={"traveler_new": "정백철"}, files=files)  # 첫 화면: 출장자와 영수증만
+        assert r.status_code == 303 and "/_새정산-" in unquote(r.headers["location"])
         _wait_job(client)
         assert not _vlm_up()  # 다 읽고 나면 웹앱이 켠 llama-server를 끈다
-        assert "AI가 읽은 값" in client.get(f"{BASE}/extract").text
+        page = client.get(f"{BASE}/extract").text  # 실제 영수증으로 기간·출장지를 채워 폴더 이름이 바뀌었다
+        assert "AI가 읽은 값" in page and 'value="2026-07-09"' in page and 'value="2026-07-10"' in page and 'value="서울"' in page
+        assert 'value="나주"' in page and deps.service.load_profile("정백철").grade == "제2호"
         receipts = deps.service.receipts("정백철", "2026-07-09_서울")
         assert len(receipts) == 3
+        client.post(f"{BASE}/trip", data={"start_date": "2026-07-09", "end_date": "2026-07-10", "destination_region": "서울",
+                                          "workplace_region": "나주", "grade": "제2호", "route_stations": "나주, 용산"})
+        client.post(f"{BASE}/docinfo", data={"purpose": "회의", "approval": "담당, 팀장, 부장"})
 
         review = client.get(f"{BASE}/review").text
         assert "196,400" in review and "잠깐, 확인!" in review

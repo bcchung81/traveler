@@ -5,10 +5,11 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from starlette.datastructures import UploadFile
-from ..ingest import SUPPORTED
+from ..models import Category
+from ..stations import city_name
 from ..workspace import TRIP_YAML_FIELDS
 from . import actions
-from .service import PROFILE_FIELDS, TripSummary, _name
+from .service import PROFILE_FIELDS, TripMoved, TripSummary, _name
 
 ERRORS = {"nofiles": "영수증을 먼저 올려 주세요.", "stale": "파일이 바뀌었어요 — 다시 읽은 뒤에 서류를 만들 수 있어요."}
 
@@ -28,14 +29,32 @@ def done_steps(status: TripSummary | None) -> tuple[int, ...]:
     return tuple(done)
 
 def existing_trip(service, traveler: str, trip_id: str) -> TripSummary:
-    """이름을 검증하고(잘못되면 400) 출장 폴더가 없으면 404."""
+    """이름을 검증하고(잘못되면 400) 출장 폴더가 없으면 404. 읽은 뒤 이름이 바뀐 출장이면 새 주소로 보낸다."""
     status = service.trip_status(traveler, trip_id)
     if not service.trip_dir(status.traveler, status.trip_id).is_dir():
+        moved = service.moved_to(status.traveler, status.trip_id)
+        if moved:
+            raise TripMoved(status.traveler, status.trip_id, moved)
         raise FileNotFoundError(f"{status.traveler}/{status.trip_id}")
     return status
 
+def submit_extract(settings, deps, run_with_clients, t: str, trip: str):
+    """영수증 읽기 작업. 끝나면 출장 폴더 이름이 바뀔 수 있어 새 주소에도 작업을 연결한다."""
+    def work():
+        new_id = run_with_clients(lambda c: actions.do_extract(settings, c, deps.vlm, t, trip, deps.service))
+        if new_id != trip:
+            deps.jobs.alias(job_key(t, trip), job_key(t, new_id))
+        return new_id
+    return deps.jobs.submit(job_key(t, trip), "extract", work)
+
+def current_trip_id(job, trip: str) -> str:
+    return job.result if job.state == "done" and isinstance(job.result, str) else trip
+
 async def _uploads(form) -> list[tuple[str, bytes]]:
     return [(f.filename, await f.read()) for f in form.getlist("files") if isinstance(f, UploadFile) and f.filename]
+
+def _blank_value(v) -> bool:
+    return v is None or v == "" or v == []
 
 def _pick(form, keys) -> dict:
     return {k: form[k] for k in keys if k in form}
@@ -52,24 +71,18 @@ def register(app: FastAPI, settings, deps, render, trip_base, see_other) -> None
     # ---- 새 정산 ----
     @app.get("/new", response_class=HTMLResponse)
     def new_page(request: Request):
-        return render(request, "upload.html", mode="new", base=None, status=None, done=(), files=[], error=None)
+        return render(request, "upload.html", mode="new", base=None, status=None, done=(), files=[], error=None, travelers=service.travelers())
 
     @app.post("/new")
     async def new_create(request: Request):
+        """첫 화면: 출장자와 영수증만 받는다. 저장하자마자 읽기를 시작하고, 출장 정보는 읽은 값으로 채운다."""
         form = await request.form()
-        traveler, start, dest = (str(form.get(k, "")).strip() for k in ("traveler", "start_date", "destination_region"))
-        if not (traveler and start and dest):
-            raise ValueError("출장자·출장 시작일·출장지는 꼭 입력해 주세요")
-        uploads = await _uploads(form)
-        for name, _ in uploads:  # 폴더를 만들기 전에 확장자부터 확인
-            if Path(name).suffix.lower() not in SUPPORTED:
-                raise ValueError(f"{name}: 지원하지 않는 확장자예요(jpg·png·pdf·heic)")
-        t, trip_id = service.create_trip(traveler, date.fromisoformat(start), dest)
-        service.save_profile(t, _pick(form, PROFILE_FIELDS))
-        service.save_trip_yaml(t, trip_id, _pick(form, TRIP_YAML_FIELDS))
-        if uploads:
-            service.save_files(t, trip_id, uploads)
-        return see_other(f"{trip_base(t, trip_id)}/upload")
+        traveler = str(form.get("traveler_new", "")).strip() or str(form.get("traveler", "")).strip()
+        if not traveler:
+            raise ValueError("출장자를 고르거나 이름을 적어 주세요")
+        t, trip = service.create_staging_trip(traveler, await _uploads(form))
+        job = submit_extract(settings, deps, run_with_clients, t, trip)
+        return see_other(f"{trip_base(t, current_trip_id(job, trip))}/extract")
 
     # ---- 1 올리기 ----
     @app.get("/t/{traveler}/{trip_id}/upload", response_class=HTMLResponse)
@@ -83,8 +96,11 @@ def register(app: FastAPI, settings, deps, render, trip_base, see_other) -> None
     @app.post("/t/{traveler}/{trip_id}/files")
     async def add_files(request: Request, traveler: str, trip_id: str):
         status = existing(traveler, trip_id)
-        service.save_files(status.traveler, status.trip_id, await _uploads(await request.form()))
-        return see_other(f"{trip_base(status.traveler, status.trip_id)}/upload")
+        t, trip = status.traveler, status.trip_id
+        if service.save_files(t, trip, await _uploads(await request.form())):
+            job = submit_extract(settings, deps, run_with_clients, t, trip)  # 올리면 바로 읽는다(이미 읽은 영수증은 캐시)
+            return see_other(f"{trip_base(t, current_trip_id(job, trip))}/extract")
+        return see_other(f"{trip_base(t, trip)}/upload")
 
     @app.post("/t/{traveler}/{trip_id}/files/delete")
     async def delete_file(request: Request, traveler: str, trip_id: str):
@@ -108,9 +124,8 @@ def register(app: FastAPI, settings, deps, render, trip_base, see_other) -> None
         base = trip_base(t, trip)
         if not status.files:
             return see_other(f"{base}/upload?error=nofiles")
-        jobs.submit(job_key(t, trip), "extract",
-                    lambda: run_with_clients(lambda c: actions.do_extract(settings, c, deps.vlm, t, trip)))
-        return see_other(f"{base}/extract")
+        job = submit_extract(settings, deps, run_with_clients, t, trip)
+        return see_other(f"{trip_base(t, current_trip_id(job, trip))}/extract")
 
 # ---- 2 읽은 값 확인 ----
 JOB_TEXT = {
@@ -131,6 +146,26 @@ def register_extract(app: FastAPI, settings, deps, render, trip_base, see_other)
 
     existing = lambda traveler, trip_id: existing_trip(service, traveler, trip_id)
 
+    def trip_card(t: str, trip: str, receipts) -> dict:
+        """출장 정보 카드: 확정 전에는 영수증으로 채운 값(근거 포함), 확정 후에는 저장한 값."""
+        if not receipts:
+            return {}
+        saved = service.load_trip_yaml(t, trip)
+        confirmed = (service.trip_dir(t, trip) / "trip.yaml").exists()
+        profile = service.load_profile(t)
+        sug = service.trip_suggestion(t, trip)
+        def field(key, saved_value):
+            if confirmed or not _blank_value(saved_value):
+                return {"value": saved_value, "auto": False, "basis": "", "guessed": False}
+            s = sug.get(key)
+            return {"value": s.value if s else None, "auto": bool(s), "basis": s.basis if s else "", "guessed": bool(s and s.guessed)}
+        fields = {k: field(k, saved.get(k)) for k in ("start_date", "end_date", "destination_region", "lodging_region", "route_stations")}
+        fields["workplace_region"] = field("workplace_region", profile.workplace_region)
+        payers = sug["payer_names"].value if "payer_names" in sug else []
+        return {"trip_confirmed": confirmed, "trip_fields": fields, "grade": profile.grade or "제2호",
+                "has_lodging": any(r.category is Category.LODGING for r in receipts),
+                "payer_mismatch": [p for p in payers if p != t]}
+
     def job_ctx(job):
         title, hint = JOB_TEXT.get(job.kind, ("작업 중이에요", "")) if job else ("", "")
         return {"job": job, "job_title": title, "job_hint": hint}
@@ -145,7 +180,7 @@ def register_extract(app: FastAPI, settings, deps, render, trip_base, see_other)
         failed = job is not None and job.state == "error" and job.kind == "extract"
         if not receipts and not failed and not (job and job.active):
             return see_other(f"{base}/upload")
-        ctx = dict(base=base, status=status, done=done_steps(status), receipts=receipts, **job_ctx(job))
+        ctx = dict(base=base, status=status, done=done_steps(status), receipts=receipts, **job_ctx(job), **trip_card(t, trip, receipts))
         if receipts:
             selected = next((r for r in receipts if r.receipt_id == rid), receipts[0])
             override = load_overrides(service.trip_dir(t, trip)).get(selected.receipt_id, {})
@@ -174,6 +209,16 @@ def register_extract(app: FastAPI, settings, deps, render, trip_base, see_other)
         if form.get("next") == "review":
             return see_other(f"{base}/review")
         return see_other(f"{base}/extract?rid={quote(rid, safe='')}")
+
+    @app.post("/t/{traveler}/{trip_id}/trip")
+    async def confirm_trip(request: Request, traveler: str, trip_id: str):
+        status = existing(traveler, trip_id)
+        t, trip = status.traveler, status.trip_id
+        form = await request.form()
+        new_id = service.confirm_trip(t, trip, {k: str(v) for k, v in form.items() if k != "next"})
+        if new_id != trip:
+            jobs.alias(job_key(t, trip), job_key(t, new_id))
+        return see_other(f"{trip_base(t, new_id)}/{'extract' if form.get('next') == 'extract' else 'review'}")
 
     @app.get("/t/{traveler}/{trip_id}/image/{image_id}")
     def receipt_image(traveler: str, trip_id: str, image_id: str):
@@ -207,7 +252,8 @@ def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) 
         with deps.clients() as clients:
             return fn(clients)
 
-    empty = dict(review=None, rows=[], law=None, law_error=None, law_notes=[], notices=[], pay_count=0, error=None)
+    empty = dict(review=None, rows=[], law=None, law_error=None, law_notes=[], notices=[], pay_count=0, error=None,
+                 ask_vehicle=False, ask_in_city=False, doc={}, doc_open=False)
 
     def progress(request, status, job):
         title, hint = JOB_TEXT.get(job.kind, ("작업 중이에요", ""))
@@ -249,9 +295,19 @@ def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) 
                 day = (f"결제 {when.month}.{when.day}." if not r.service_date else f"{when.month}.{when.day}.") if when else "미상"
             rows.append({"decision": d, "receipt": r, "label": label, "day": day, "kind": resolve_kind(d, r)})
         pay_count = sum(1 for d in review.decisions if d.verdict.value in ("지급", "감액지급"))
+        saved, profile = service.load_trip_yaml(t, trip), service.load_profile(t)
+        tr = review.trip
+        transport = {Category.RAIL, Category.BUS, Category.AIR, Category.TAXI}
+        # 상황별 질문: 판정을 막지 않고, trip.yaml에 답이 생기면 다시 묻지 않는다
+        ask_vehicle = (not tr.proposed and not tr.within_workplace and "official_vehicle" not in saved
+                       and not any(r.category in transport for r in review.receipts))
+        ask_in_city = (not tr.proposed and "within_workplace" not in saved and bool(tr.workplace_region) and bool(tr.destination_region)
+                       and city_name(tr.workplace_region) == city_name(tr.destination_region))
+        doc = {"purpose": saved.get("purpose") or "", "org": profile.org, "dept": profile.dept, "approval": ", ".join(profile.approval)}
         return render(request, "review.html", base=base, status=status, done=done_steps(status), job=None, review=review, rows=rows,
                       law=review.law, law_error=None, law_notes=review.law_notes, notices=book.notices(today), pay_count=pay_count,
-                      error=ERRORS.get(error))
+                      error=ERRORS.get(error), ask_vehicle=ask_vehicle, ask_in_city=ask_in_city, doc=doc,
+                      doc_open=not (doc["purpose"] and doc["org"] and doc["approval"]))
 
     @app.post("/t/{traveler}/{trip_id}/resolve")
     async def resolve(request: Request, traveler: str, trip_id: str):
@@ -259,17 +315,31 @@ def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) 
         form = await request.form()
         service.save_profile(status.traveler, _pick(form, ("grade",)))
         service.save_trip_yaml(status.traveler, status.trip_id,
-                               _pick(form, ("lodging_region", "over_cap_reason", "taxi_reason", "start_date", "end_date", "destination_region")))
+                               _pick(form, ("lodging_region", "over_cap_reason", "taxi_reason", "start_date", "end_date", "destination_region",
+                                            "official_vehicle", "within_workplace", "duration_hours", "purpose")))
         return see_other(f"{trip_base(status.traveler, status.trip_id)}/review")
 
-    @app.post("/t/{traveler}/{trip_id}/finalize")
-    def finalize(traveler: str, trip_id: str):
-        status = existing(traveler, trip_id)
+    def start_finalize(status):
         t, trip = status.traveler, status.trip_id
         if status.stale:  # 새로 올린 영수증은 판정을 검토하지 않았으므로 서류에 넣지 않는다
             return see_other(f"{trip_base(t, trip)}/review?error=stale")
         jobs.submit(job_key(t, trip), "finalize", lambda: run_with_clients(lambda c: actions.do_finalize(settings, c, deps.vlm, t, trip)))
         return see_other(f"{trip_base(t, trip)}/result")
+
+    @app.post("/t/{traveler}/{trip_id}/finalize")
+    def finalize(traveler: str, trip_id: str):
+        return start_finalize(existing(traveler, trip_id))
+
+    @app.post("/t/{traveler}/{trip_id}/docinfo")
+    async def docinfo(request: Request, traveler: str, trip_id: str):
+        """서류에 들어갈 정보: 출장 목적(출장별), 기관·부서·결재선(출장자별 기억). next=finalize면 저장 후 바로 서류를 만든다."""
+        status = existing(traveler, trip_id)
+        form = await request.form()
+        service.save_trip_yaml(status.traveler, status.trip_id, _pick(form, ("purpose",)))
+        service.save_profile(status.traveler, _pick(form, ("org", "dept", "approval")))
+        if form.get("next") == "finalize":
+            return start_finalize(status)
+        return see_other(f"{trip_base(status.traveler, status.trip_id)}/review")
 
 # ---- 4 서류 완성 ----
 PREVIEW_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:"

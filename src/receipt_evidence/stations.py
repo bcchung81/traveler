@@ -34,6 +34,17 @@ def _normalize(name: str) -> str:
             break
     return s
 
+def city_name(name: str | None) -> str:
+    """비교용 도시 이름: 역·공항이면 그 도시, 아니면 '나주시'→'나주'처럼 시·군·구를 뗀 이름."""
+    if not name or not name.strip():
+        return ""
+    s = unicodedata.normalize("NFC", name).strip()
+    city = place_of(s)
+    if city:
+        return city
+    s = re.sub(r"\s+", "", s)
+    return s[:-1] if len(s) > 2 and s[-1] in "시군구" else s
+
 def place_of(name: str | None) -> str | None:
     """역·터미널·공항 이름의 도시. 모르면 None."""
     if not name or not name.strip():

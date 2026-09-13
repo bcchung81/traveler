@@ -25,7 +25,7 @@ import pytest
 from datetime import date
 
 def test_bad_input_shows_html_error_page(web):
-    r = web.post("/new", data={"traveler": "정백철", "start_date": "2026-13-40", "destination_region": "서울"})
+    r = web.post("/new", data={"traveler_new": ".숨김"}, files=[("files", ("k.png", b"x", "image/png"))])
     assert r.status_code == 400 and "text/html" in r.headers["content-type"] and "입력" in r.text and 'href="/"' in r.text
 
 def test_code_bugs_are_not_hidden_as_404(web, monkeypatch):

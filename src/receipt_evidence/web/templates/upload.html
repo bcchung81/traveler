@@ -1,8 +1,7 @@
 {% extends "base.html" %}
 {% from "_steps.html" import steps %}
-{% from "_trip_fields.html" import trip_fields %}
 {% block title %}영수증 올리기 · 여비정산 증빙{% endblock %}
-{% block meta %}{% if mode == "new" %}새 정산 · 영수증과 출장 정보를 넣어 주세요{% else %}{{ status.traveler }} · {{ status.trip_id }}{% endif %}{% endblock %}
+{% block meta %}{% if mode == "new" %}새 정산 · 영수증만 올리면 출장 정보는 채워 드려요{% else %}{{ status.traveler }} · {{ status.display_name }}{% endif %}{% endblock %}
 {% block cta %}
 {% if mode == "edit" %}
 <form method="post" action="{{ base }}/extract">
@@ -14,88 +13,84 @@
 {% endif %}
 {% endblock %}
 {% block content %}
-{{ steps(base, 1, done=done, subs={1: "영수증을 올려 주세요"}) }}
-{% if error %}<div class="banner banner--error" role="alert">{{ error }}</div>{% endif %}
-{% if status and status.stale %}<div class="banner">파일이 바뀌었어요 — "영수증 읽기 시작"을 눌러 새 영수증을 읽어 주세요. 이미 읽은 영수증은 다시 읽지 않아요.</div>{% endif %}
-
 {% if mode == "new" %}
-<form method="post" action="/new" enctype="multipart/form-data" class="layout-upload">
+{{ steps(None, 1, compact=True) }}
+<form method="post" action="/new" enctype="multipart/form-data" class="new-trip" id="new-form">
   <section class="panel">
-    <div class="dropzone" id="drop">
+    <div class="dropzone dropzone--big" id="drop">
       {% include "_receipt_art.html" %}
-      <div class="title">영수증을 여기에 끌어다 놓으세요</div>
-      <div class="hint">JPG · PNG · PDF · HEIC, 여러 장을 한 번에 올릴 수 있어요 (파일당 30MB까지)</div>
+      <div class="title title--lg">영수증을 여기에 끌어다 놓으세요</div>
+      <div class="hint">사진·스크린샷·PDF·HEIC 여러 장 · 놓으면 바로 읽기 시작해요</div>
       <span class="btn">파일 고르기</span>
       <input type="file" name="files" multiple accept=".jpg,.jpeg,.png,.pdf,.heic,.heif" id="files" aria-label="영수증 파일">
     </div>
-    <div class="stack" id="picked"></div>
+    <div class="traveler-pick" role="group" aria-label="출장자">
+      <span class="label">출장자</span>
+      {% for name in travelers %}
+      <label class="pick"><input type="radio" name="traveler" value="{{ name }}"{% if travelers|length == 1 %} checked{% endif %}><span>{{ name }}</span></label>
+      {% endfor %}
+      <input class="input input--inline" name="traveler_new" id="traveler_new" maxlength="60" autocomplete="name" placeholder="{{ '새 출장자 이름' if travelers else '출장자 이름' }}">
+    </div>
+    <div class="banner banner--error" id="pick-msg" role="alert" hidden>출장자를 고르거나 이름을 적은 뒤 다시 올려 주세요</div>
+    <div class="progress" id="sending" hidden><span class="spinner" aria-hidden="true"></span><span class="title title--sm">올리는 중이에요…</span></div>
   </section>
-  <aside class="stack" style="gap:20px">
-    <section class="panel">
-      <h2 class="title">출장 정보</h2>
-      {{ trip_fields(None, {}, with_traveler=True) }}
-    </section>
-    {% include "_local_note.html" %}
-    <button class="cta" type="submit" style="justify-content:center">정산 만들기</button>
-  </aside>
+  {% include "_local_note.html" %}
+  <noscript><button class="cta" type="submit">올리고 읽기 시작</button></noscript>
 </form>
 <script>
   (function () {
-    var input = document.getElementById("files"), picked = document.getElementById("picked"), drop = document.getElementById("drop");
-    input.addEventListener("change", function () {
-      picked.textContent = "";
-      Array.prototype.forEach.call(input.files, function (f) {
-        var row = document.createElement("div"); row.className = "file-row";
-        var name = document.createElement("span"); name.className = "file-name"; name.textContent = f.name;
-        row.appendChild(name); picked.appendChild(row);
-      });
-    });
+    var form = document.getElementById("new-form"), input = document.getElementById("files"), drop = document.getElementById("drop");
+    var name = document.getElementById("traveler_new"), msg = document.getElementById("pick-msg"), sending = document.getElementById("sending");
+    var radios = form.querySelectorAll('input[name="traveler"]');
+    function picked() { return name.value.trim() || Array.prototype.some.call(radios, function (r) { return r.checked; }); }
+    name.addEventListener("input", function () { if (name.value.trim()) Array.prototype.forEach.call(radios, function (r) { r.checked = false; }); });
+    Array.prototype.forEach.call(radios, function (r) { r.addEventListener("change", function () { name.value = ""; if (input.files.length) send(); }); });
+    name.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); if (input.files.length) send(); } });
+    function send() {
+      if (!picked()) { msg.hidden = false; name.focus(); return; }
+      msg.hidden = true; sending.hidden = false; form.submit();
+    }
+    input.addEventListener("change", function () { if (input.files.length) send(); });
     ["dragenter", "dragover"].forEach(function (e) { drop.addEventListener(e, function () { drop.classList.add("is-over"); }); });
     ["dragleave", "drop"].forEach(function (e) { drop.addEventListener(e, function () { drop.classList.remove("is-over"); }); });
   })();
 </script>
 {% else %}
-<div class="layout-upload">
-  <section class="panel">
-    <form method="post" action="{{ base }}/files" enctype="multipart/form-data">
-      <div class="dropzone" id="drop">
-        {% include "_receipt_art.html" %}
-        <div class="title">영수증을 여기에 끌어다 놓으세요</div>
-        <div class="hint">JPG · PNG · PDF · HEIC, 여러 장을 한 번에 올릴 수 있어요 (파일당 30MB까지)</div>
-        <span class="btn">파일 고르기</span>
-        <input type="file" name="files" multiple accept=".jpg,.jpeg,.png,.pdf,.heic,.heif" aria-label="영수증 파일" onchange="this.form.submit()">
-      </div>
-    </form>
-    <div class="row row--between">
-      <h2 class="title title--sm">올린 영수증 {{ files|length }}건</h2>
-      <span class="hint">여러 쪽 PDF는 한 건으로 묶어요</span>
+{{ steps(base, 1, done=done, subs={1: "영수증을 올려 주세요"}) }}
+{% if error %}<div class="banner banner--error" role="alert">{{ error }}</div>{% endif %}
+{% if status and status.stale %}<div class="banner">파일이 바뀌었어요 — "영수증 읽기 시작"을 눌러 새 영수증을 읽어 주세요. 이미 읽은 영수증은 다시 읽지 않아요.</div>{% endif %}
+<section class="panel">
+  <form method="post" action="{{ base }}/files" enctype="multipart/form-data">
+    <div class="dropzone" id="drop">
+      {% include "_receipt_art.html" %}
+      <div class="title">영수증을 더 올리려면 여기에 끌어다 놓으세요</div>
+      <div class="hint">놓으면 바로 새 영수증만 읽어요</div>
+      <span class="btn">파일 고르기</span>
+      <input type="file" name="files" multiple accept=".jpg,.jpeg,.png,.pdf,.heic,.heif" aria-label="영수증 파일" onchange="this.form.submit()">
     </div>
-    <div class="stack">
-    {% for f in files %}
-      <div class="file-row">
-        <span class="file-icon {% if f.kind == 'PDF' %}file-icon--pdf{% endif %}" aria-hidden="true">
-          {% if f.kind == 'PDF' %}<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#08080C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path></svg>
-          {% else %}<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#08080C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"></rect><circle cx="9" cy="9" r="2"></circle><path d="M21 15l-5-5L5 21"></path></svg>{% endif %}
-        </span>
-        <span class="stack" style="gap:2px;flex-grow:1"><span class="file-name">{{ f.name }}</span><span class="hint">{{ f.kind }} · {{ (f.size / 1024)|round|int }}KB</span></span>
-        <form method="post" action="{{ base }}/files/delete">
-          <input type="hidden" name="name" value="{{ f.name }}">
-          <button class="icon-btn" type="submit" aria-label="{{ f.name }} 삭제" title="삭제"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(8,8,12,0.6)" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></button>
-        </form>
-      </div>
-    {% else %}
-      <div class="hint">아직 올린 영수증이 없어요.</div>
-    {% endfor %}
+  </form>
+  <div class="row row--between">
+    <h2 class="title title--sm">올린 영수증 {{ files|length }}건</h2>
+    <span class="hint">여러 쪽 PDF는 한 건으로 묶어요</span>
+  </div>
+  <div class="stack">
+  {% for f in files %}
+    <div class="file-row">
+      <span class="file-icon {% if f.kind == 'PDF' %}file-icon--pdf{% endif %}" aria-hidden="true">
+        {% if f.kind == 'PDF' %}<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#08080C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path></svg>
+        {% else %}<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#08080C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"></rect><circle cx="9" cy="9" r="2"></circle><path d="M21 15l-5-5L5 21"></path></svg>{% endif %}
+      </span>
+      <span class="stack" style="gap:2px;flex-grow:1"><span class="file-name">{{ f.name }}</span><span class="hint">{{ f.kind }} · {{ (f.size / 1024)|round|int }}KB</span></span>
+      <form method="post" action="{{ base }}/files/delete">
+        <input type="hidden" name="name" value="{{ f.name }}">
+        <button class="icon-btn" type="submit" aria-label="{{ f.name }} 삭제" title="삭제"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(8,8,12,0.6)" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></button>
+      </form>
     </div>
-  </section>
-  <aside class="stack" style="gap:20px">
-    <form method="post" action="{{ base }}/info" class="panel">
-      <div class="row row--between"><h2 class="title">출장 정보</h2><span class="hint">{{ status.traveler }}</span></div>
-      {{ trip_fields(profile, trip) }}
-      <button class="btn btn--yellow" type="submit">출장 정보 저장</button>
-    </form>
-    {% include "_local_note.html" %}
-  </aside>
-</div>
+  {% else %}
+    <div class="hint">아직 올린 영수증이 없어요.</div>
+  {% endfor %}
+  </div>
+</section>
+{% include "_local_note.html" %}
 {% endif %}
 {% endblock %}
