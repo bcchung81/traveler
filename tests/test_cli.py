@@ -11,7 +11,7 @@ def _res(**kw):
     return PipelineResult(**(base | kw))
 
 def _patch(monkeypatch, results, captured=None):
-    def fake_batch(data_dir, out_dir, clients, *, travelers=None, trips=None, opts=None, run_id=None):
+    def fake_batch(data_dir, out_dir, clients, *, travelers=None, trips=None, opts=None, run_id=None, **kwargs):
         if captured is not None:
             captured.update(travelers=travelers, trips=trips, workers=opts.workers, new_version=opts.new_version, refresh_law=opts.refresh_law)
         return BatchResult(run_id="b", results=results, warnings=["loose.jpg: data/<출장자>/<출장>/ 폴더에 넣어야 처리돼요"],
@@ -45,3 +45,25 @@ def test_check_vlm_unhealthy(monkeypatch):
         def healthy(self): return False
     monkeypatch.setattr(cli, "LlamaServerClient", Dead)
     assert cli.main(["check-vlm"]) == 2
+
+def test_run_uses_on_demand_vlm_and_stops(monkeypatch):
+    events = []
+    class FakeVlm:
+        def ensure_ready(self, timeout=180.0, poll=1.0):
+            events.append("ensure")
+        def stop(self):
+            events.append("stop")
+    _patch(monkeypatch, [_res()])
+    monkeypatch.setattr(cli, "vlm_manager", lambda url: FakeVlm())
+    inner = cli.run_batch
+    def batch(*a, **k):
+        k["on_vlm_needed"]()  # 새 영수증이 있어 VLM이 필요한 상황
+        return inner(*a, **k)
+    monkeypatch.setattr(cli, "run_batch", batch)
+    assert cli.main(["run"]) == 0 and events == ["ensure", "stop"]
+
+def test_web_command_refuses_non_loopback(monkeypatch):
+    called = {}
+    monkeypatch.setattr(cli, "_serve_web", lambda settings: called.setdefault("s", settings))
+    assert cli.main(["web", "--host", "0.0.0.0"]) == 2 and "s" not in called
+    assert cli.main(["web", "--port", "9000"]) == 0 and called["s"].port == 9000 and called["s"].host == "127.0.0.1"

@@ -19,13 +19,19 @@ data/<출장자>/<YYYY-MM-DD_출장지>/*.jpg|png|pdf  영수증
 
 ## 실행
 ```bash
-bash scripts/start_vlm.sh &                 # 영수증이 많으면 VLM_PARALLEL=4 bash scripts/start_vlm.sh &
-uv run receipt-evidence check-vlm
+# llama-server는 필요할 때 자동으로 켜지고 끝나면 꺼집니다(수동: bash scripts/start_vlm.sh)
 uv run receipt-evidence run                 # 전체 일괄
 uv run receipt-evidence run --traveler 정백철 --trip 2026-07-09_서울 --workers 4
 ```
 - 다시 실행하면 이미 읽은 영수증은 캐시를 쓰고, 입력이 바뀐 출장만 새 버전(`v2`, `v3` …)을 만듭니다.
 - 결과: `out/<출장자>/<출장>/v<N>/evidence.hwpx`, 요약 `out/summary-<run_id>.md`.
+
+## 웹앱 실행
+```bash
+uv run receipt-evidence web                 # http://127.0.0.1:8765 (이 컴퓨터에서만 열림)
+```
+홈(출장 목록) → 새 정산 → ① 영수증 올리기 → ② 읽은 값 확인 → ③ 판정 검토 → ④ 서류 완성(미리보기·내려받기·버전 이력).
+로컬 AI(llama-server)는 새 영수증을 읽을 때만 자동으로 켜지고, 다 읽으면 꺼집니다. `run` 명령도 같습니다.
 
 ## 테스트
 ```bash

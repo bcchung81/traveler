@@ -12,8 +12,12 @@ description: data/<출장자>/<출장>/ 폴더의 영수증을 로컬 Qwen3-VL�
 - `data/<출장자>/<출장>/overrides.yaml`: 영수증에 없는 사실이나 오인식을 사용자 확인값으로 교정(`receipt_id`별 필드, `clear_warnings`).
 - 예시는 `examples/`에 있다.
 
+## 웹앱으로 하기
+- `uv run receipt-evidence web` 실행 후 http://127.0.0.1:8765 를 연다(이 컴퓨터에서만 열림). 홈 → 새 정산 → 올리기 → 읽은 값 확인 → 판정 검토 → 서류 완성 순서.
+- 로컬 AI(llama-server)는 새 영수증을 읽을 때만 자동으로 켜지고 다 읽으면 꺼진다. 미리 켜 둘 필요 없다.
+
 ## 절차
-1. VLM 확인: `uv run receipt-evidence check-vlm`. exit 2면 `bash scripts/start_vlm.sh &`로 기동하고 `/health`가 ok가 될 때까지 기다린다(첫 로드 30~60초). 영수증이 많으면 `VLM_PARALLEL=4 bash scripts/start_vlm.sh &`와 `--workers 4`를 함께 쓴다.
+1. VLM은 미리 켜지 않는다: `run`이 새 영수증을 읽어야 할 때만 `scripts/start_vlm.sh`로 켜고 끝나면 끈다. 영수증이 많으면 직접 `VLM_PARALLEL=4 bash scripts/start_vlm.sh &`로 켜고 `--workers 4`를 쓴 뒤, 끝나면 그 서버를 꼭 끈다.
 2. 영수증이 `data/` 루트나 출장자 폴더에 바로 있으면 어느 출장자·출장인지 **사용자에게 묻고 확인을 받은 뒤** 폴더로 옮긴다. 임의로 옮기지 않는다.
 3. `traveler.yaml`이 없으면 사용자에게 여비 구분(제1호/제2호)·근무지·결재선을 묻고 `examples/traveler.yaml`을 복사해 채운다. 답이 없으면 비워 둔다.
 4. 실행: `uv run receipt-evidence run` (특정 대상만: `--traveler 정백철 --trip 2026-07-09_서울`).
