@@ -2,6 +2,7 @@
 {% block meta %}{% if trips %}출장 {{ trips|length }}건 · 출장자 {{ groups|length }}명{% else %}영수증을 올려 여비 정산을 시작하세요{% endif %}{% endblock %}
 {% block cta %}<a class="cta" href="/new">새 정산 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg></a>{% endblock %}
 {% block content %}
+{% for n in notices %}<div class="banner" role="status">{{ n }}</div>{% endfor %}
 {% if not groups %}
 <section class="panel empty">
   <h1 class="title title--lg">아직 출장이 없어요</h1>

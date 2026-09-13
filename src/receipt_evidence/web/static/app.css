@@ -1,4 +1,10 @@
 /* 여비정산 증빙 — C안(코믹 패널) 스타일. 토큰은 design/receipt-evidence-ui/*.dc.html 에서 옮김 */
+/* 글꼴은 인터넷 없이도 보이도록 저장소에 동봉(Google Fonts OFL, 한글 상용 2,350자+화면 문구로 서브셋). 없는 글자는 시스템 글꼴로 */
+@font-face { font-family: 'Gothic A1'; font-weight: 400; font-display: swap; src: url('/static/fonts/GothicA1-Regular.woff2') format('woff2'); }
+@font-face { font-family: 'Gothic A1'; font-weight: 600; font-display: swap; src: url('/static/fonts/GothicA1-SemiBold.woff2') format('woff2'); }
+@font-face { font-family: 'Gothic A1'; font-weight: 800; font-display: swap; src: url('/static/fonts/GothicA1-ExtraBold.woff2') format('woff2'); }
+@font-face { font-family: 'Do Hyeon'; font-weight: 400; font-display: swap; src: url('/static/fonts/DoHyeon-Regular.woff2') format('woff2'); }
+@font-face { font-family: 'Anton'; font-weight: 400; font-display: swap; src: url('/static/fonts/Anton-Regular.woff2') format('woff2'); }
 :root {
   --bg: #F2ECDD;
   --paper: #FAF8F2;

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib, json
 from pathlib import Path
 from .models import Decision, LawSnapshot, Receipt, TripConfig
-from .report import fmt_won
+from .report import REPORT_VERSION, fmt_won
 from .rules import RULES_VERSION, totals
 
 _RECEIPT_FIELDS = {"receipt_id", "sha256", "category", "merchant", "business_no", "amount", "paid_at", "service_date", "service_end_date",
@@ -15,6 +15,7 @@ def fingerprint(receipts: list[Receipt], trip: TripConfig, law: LawSnapshot) -> 
         "trip": trip.model_dump(mode="json"),
         "law": [law.mst, law.effective.isoformat()],
         "rules": RULES_VERSION,
+        "report": REPORT_VERSION,
     }
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 

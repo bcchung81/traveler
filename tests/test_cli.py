@@ -67,3 +67,27 @@ def test_web_command_refuses_non_loopback(monkeypatch):
     monkeypatch.setattr(cli, "_serve_web", lambda settings: called.setdefault("s", settings))
     assert cli.main(["web", "--host", "0.0.0.0"]) == 2 and "s" not in called
     assert cli.main(["web", "--port", "9000"]) == 0 and called["s"].port == 9000 and called["s"].host == "127.0.0.1"
+
+def test_run_prints_law_notices(monkeypatch, capsys):
+    _patch(monkeypatch, [_res()])
+    inner = cli.run_batch
+    monkeypatch.setattr(cli, "run_batch", lambda *a, **k: inner(*a, **k).model_copy(update={"notices": ["인터넷에 연결되지 않아 저장해 둔 규정을 적용함"]}))
+    assert cli.main(["run"]) == 0 and "※ 인터넷에 연결되지 않아" in capsys.readouterr().out
+
+def test_prepare_fetches_law_and_starts_mcp_packages(monkeypatch, capsys, tmp_path, law_fixture_text):
+    from helpers import law_from
+    started = []
+    class Doc(FakeToolCaller):
+        def ensure_started(self):
+            started.append("kordoc")
+    monkeypatch.setattr(cli, "law_caller", lambda: law_from(law_fixture_text))
+    monkeypatch.setattr(cli, "kordoc_caller", lambda: Doc({}))
+    monkeypatch.setattr(cli, "vlm_ready", lambda: (True, "모델 파일 있음"))
+    code = cli.main(["prepare", "--out", str(tmp_path / "out")])
+    out = capsys.readouterr().out
+    assert code == 0 and "최신본" in out and "287535" in out and started == ["kordoc"] and "오프라인" in out
+    class Down(FakeToolCaller):
+        def call_many(self, calls):
+            raise RuntimeError("ENOTFOUND")
+    monkeypatch.setattr(cli, "law_caller", lambda: Down({}))
+    assert cli.main(["prepare", "--out", str(tmp_path / "out")]) == 2 and "저장해 둔 규정" in capsys.readouterr().out

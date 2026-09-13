@@ -117,3 +117,30 @@ def test_category_keyword_fallback_when_vlm_says_other(tmp_path):
     assert infer_category(Category.RAIL, "(주)여기어때컴퍼니", "")[0] is Category.RAIL  # VLM이 분류한 값은 그대로 둔다
     assert infer_category(Category.UNKNOWN, None, "코레일 승차권") == (Category.RAIL, "코레일")
     assert infer_category(Category.OTHER, "문구점", "볼펜") == (Category.OTHER, None)
+
+class _BrokenOnSha(FakeVlmClient):
+    """특정 영수증(이미지)에서만 연결이 끊기는 상황"""
+    def chat(self, messages, *, json_schema=None, max_tokens=2048, schema_mode="json_schema"):
+        url = next(c["image_url"]["url"] for c in messages[-1]["content"] if c["type"] == "image_url")
+        if Image.open(__import__("io").BytesIO(__import__("base64").b64decode(url.split(",", 1)[1]))).size == (9, 9):
+            raise RuntimeError("llama-server 응답 없음: ConnectError")
+        return json.dumps(KTX, ensure_ascii=False) if json_schema else "결제금액 48,200원"
+
+def test_one_receipt_failure_is_isolated(tmp_path):
+    good = _img(tmp_path)
+    p = tmp_path / "bad-p1.png"; Image.new("RGB", (9, 9)).save(p)
+    bad = ReceiptImage(image_id="bad-p1", source_path="bad.jpg", png_path=str(p), sha256="bad", width=9, height=9)
+    cache = ExtractCache(tmp_path / ".cache")
+    rs = extract_receipts(_BrokenOnSha([]), [bad, good], tmp_path / "out", cache=cache, workers=2)
+    assert rs[0].warnings == ["EXTRACT_FAILED"] and "ConnectError" in rs[0].raw["error"] and rs[1].amount == 48200
+    assert Path(rs[0].transcript_path).exists() and not cache.has("bad") and cache.has("abc")
+
+def test_rotated_photo_uses_separate_cache_key(tmp_path):
+    from receipt_evidence.cache import cache_key
+    img = _img(tmp_path)
+    assert cache_key(img) == "abc" and cache_key(img.model_copy(update={"orientation": 6})) == "abc-o6"
+    cache = ExtractCache(tmp_path / ".cache")
+    extract_receipts(FakeVlmClient(["결제금액 48,200원", json.dumps(KTX, ensure_ascii=False)]), [img], tmp_path / "o1", cache=cache)
+    vlm = FakeVlmClient(["결제금액 48,200원", json.dumps(KTX, ensure_ascii=False)])
+    extract_receipts(vlm, [img.model_copy(update={"orientation": 6})], tmp_path / "o2", cache=cache)
+    assert len(vlm.calls) == 2  # 예전에 눕힌 채 읽은 결과를 재사용하지 않는다

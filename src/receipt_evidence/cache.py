@@ -2,8 +2,13 @@
 from __future__ import annotations
 import json, threading
 from pathlib import Path
+from .models import ReceiptImage
 
 PROMPT_VERSION = "p1"  # extract.py 프롬프트나 스키마를 바꾸면 올린다 → 이전 캐시가 자동으로 무효화됨
+
+def cache_key(img: ReceiptImage) -> str:
+    """원본 sha256. EXIF로 회전해 읽은 사진은 예전에 눕힌 채 읽은 결과와 섞이지 않게 방향값을 붙인다."""
+    return img.sha256 if img.orientation in (0, 1) else f"{img.sha256}-o{img.orientation}"
 
 class ExtractCache:
     """원본 영수증 sha256 → {transcript, data}. 추가 제출·재실행 시 새 영수증만 VLM으로 읽기 위한 캐시."""

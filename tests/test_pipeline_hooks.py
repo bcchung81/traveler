@@ -3,7 +3,7 @@ import json
 from datetime import date
 import pytest
 from helpers import TRAVELER, ColorVlm, color_png, doc_fake, law_from, rail
-from receipt_evidence.law import get_law_snapshot
+from receipt_evidence.law import get_law_book
 from receipt_evidence.pipeline import Clients, extract_trip, find_job, review_receipts, run_batch
 
 def _setup(tmp_path, t):
@@ -34,7 +34,7 @@ def test_extract_trip_unknown_trip_raises(tmp_path, law_fixture_text):
 def test_review_receipts_matches_finalize_without_summary(tmp_path, law_fixture_text):
     data, out, _, clients = _setup(tmp_path, law_fixture_text)
     work = extract_trip(data, out, clients, "정백철", "2026-07-09_서울")
-    law = get_law_snapshot(clients.law, out / ".cache", date.today())
+    law = get_law_book(clients.law, out / ".cache", date.today())
     review = review_receipts(find_job(data, "정백철", "2026-07-09_서울"), work.receipts, law)
     assert review.totals == {"claimed": 48200, "approved": 148200, "review": 0} and not review.trip.proposed
     res = run_batch(data, out, clients, run_id="w1", summary=False).results[0]

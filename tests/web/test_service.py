@@ -3,9 +3,9 @@ import unicodedata
 from datetime import date
 import pytest, yaml
 from helpers import TRAVELER, ColorVlm, color_png, doc_fake, law_from, rail
-from receipt_evidence.law import get_law_snapshot
 from receipt_evidence.pipeline import Clients, extract_trip, run_batch
 from receipt_evidence.web.service import MAX_UPLOAD_BYTES, InvalidName, TripService
+from receipt_evidence.workspace import NotFound
 
 def _svc(tmp_path):
     return TripService(tmp_path / "data", tmp_path / "out")
@@ -72,7 +72,7 @@ def test_receipts_with_overrides_and_diff_only_save(tmp_path, law_fixture_text):
     assert s.receipts(traveler, trip_id)[0].merchant == "코레일"
     s.save_override(traveler, trip_id, r.receipt_id, {"merchant": "한국철도공사"}, clear_warnings=[])
     assert not path.exists() or yaml.safe_load(path.read_text(encoding="utf-8")) in (None, {})
-    with pytest.raises(KeyError):
+    with pytest.raises(NotFound):
         s.save_override(traveler, trip_id, "nope-p1", {"amount": "1"}, clear_warnings=[])
 
 def test_images_versions_and_law_cache(tmp_path, law_fixture_text):
@@ -81,9 +81,9 @@ def test_images_versions_and_law_cache(tmp_path, law_fixture_text):
     assert s.images_for(traveler, trip_id)[rid] == [rid] and s.image_path(traveler, trip_id, rid).exists()
     with pytest.raises(InvalidName):
         s.image_path(traveler, trip_id, "../../x")
-    assert s.cached_law(date(2000, 1, 1)) is None
+    assert s.law_book(date(2000, 1, 1)) is None
     run_batch(s.data_dir, s.out_dir, clients, summary=False)
-    assert s.cached_law(date.today()).mst == "287535"
+    assert s.law_book(date.today()).current.mst == "287535"
     v = s.versions(traveler, trip_id)
     assert [x.version for x in v] == [1] and v[0].hwpx.exists() and v[0].verify_ok is True
     assert s.trip_status(traveler, trip_id).stage == "documented" and s.latest_result(traveler, trip_id).version == 1
@@ -92,3 +92,11 @@ def test_images_versions_and_law_cache(tmp_path, law_fixture_text):
         s.version_file(traveler, trip_id, 1, "../latest.json")
     with pytest.raises(FileNotFoundError):
         s.version_file(traveler, trip_id, 7, "evidence.hwpx")
+
+
+def test_status_hashes_are_cached_between_calls(tmp_path, law_fixture_text, monkeypatch):
+    s, traveler, trip_id, _ = _extracted(tmp_path, law_fixture_text)
+    s.list_trips()
+    import receipt_evidence.workspace as ws
+    monkeypatch.setattr(ws, "sha256_file", lambda p: pytest.fail("바뀌지 않은 파일을 다시 해시함"))
+    assert TripService(s.data_dir, s.out_dir).list_trips()[0].stale is False

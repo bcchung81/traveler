@@ -10,7 +10,7 @@ from ..workspace import TRIP_YAML_FIELDS
 from . import actions
 from .service import PROFILE_FIELDS, TripSummary, _name
 
-ERRORS = {"nofiles": "영수증을 먼저 올려 주세요."}
+ERRORS = {"nofiles": "영수증을 먼저 올려 주세요.", "stale": "파일이 바뀌었어요 — 다시 읽은 뒤에 서류를 만들 수 있어요."}
 
 def job_key(traveler: str, trip_id: str) -> str:
     return f"{traveler}/{trip_id}"
@@ -63,7 +63,7 @@ def register(app: FastAPI, settings, deps, render, trip_base, see_other) -> None
         uploads = await _uploads(form)
         for name, _ in uploads:  # 폴더를 만들기 전에 확장자부터 확인
             if Path(name).suffix.lower() not in SUPPORTED:
-                raise ValueError(f"{name}: 지원하지 않는 확장자예요(jpg·jpeg·png·pdf)")
+                raise ValueError(f"{name}: 지원하지 않는 확장자예요(jpg·png·pdf·heic)")
         t, trip_id = service.create_trip(traveler, date.fromisoformat(start), dest)
         service.save_profile(t, _pick(form, PROFILE_FIELDS))
         service.save_trip_yaml(t, trip_id, _pick(form, TRIP_YAML_FIELDS))
@@ -115,7 +115,7 @@ def register(app: FastAPI, settings, deps, render, trip_base, see_other) -> None
 # ---- 2 읽은 값 확인 ----
 JOB_TEXT = {
     "extract": ("영수증을 읽는 중이에요", "새 영수증이 있으면 로컬 AI를 켜서 읽고, 다 읽으면 꺼요. 한 장에 20~40초쯤 걸려요."),
-    "law": ("여비 규정을 찾는 중이에요", "공무원 여비 규정 현행본을 조회해요. 하루에 한 번만 조회해요."),
+    "law": ("여비 규정을 찾는 중이에요", "공무원 여비 규정 현행본을 하루에 한 번 조회해요. 인터넷이 없으면 저장해 둔 규정을 써요."),
     "finalize": ("HWPX 서류를 만드는 중이에요", "판정 결과로 증빙내역서를 만들고, 다시 읽어 합계를 맞춰 봐요."),
 }
 
@@ -207,13 +207,15 @@ def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) 
         with deps.clients() as clients:
             return fn(clients)
 
+    empty = dict(review=None, rows=[], law=None, law_error=None, law_notes=[], notices=[], pay_count=0, error=None)
+
     def progress(request, status, job):
         title, hint = JOB_TEXT.get(job.kind, ("작업 중이에요", ""))
-        return render(request, "review.html", base=trip_base(status.traveler, status.trip_id), status=status, done=done_steps(status),
-                      job=job, job_title=title, job_hint=hint, review=None, rows=[], law=None, law_error=None, pay_count=0)
+        return render(request, "review.html", **(empty | dict(base=trip_base(status.traveler, status.trip_id), status=status,
+                      done=done_steps(status), job=job, job_title=title, job_hint=hint)))
 
     @app.get("/t/{traveler}/{trip_id}/review", response_class=HTMLResponse)
-    def review_page(request: Request, traveler: str, trip_id: str):
+    def review_page(request: Request, traveler: str, trip_id: str, error: str = ""):
         status = existing(traveler, trip_id)
         t, trip = status.traveler, status.trip_id
         base, key = trip_base(t, trip), job_key(t, trip)
@@ -223,16 +225,17 @@ def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) 
         receipts = service.receipts(t, trip)
         if not receipts:
             return see_other(f"{base}/upload")
-        law = service.cached_law(date.today())
-        if law is None:
+        today = date.today()
+        book = service.law_book(today)
+        if book is None:
             job = jobs.submit(key, "law", lambda: run_with_clients(lambda c: actions.do_warm_law(settings, c)))
             if job.active:
                 return progress(request, status, job)
-            law = service.cached_law(date.today())
-            if law is None:
-                return render(request, "review.html", base=base, status=status, done=done_steps(status), job=None, review=None, rows=[],
-                              law=None, law_error=job.message or "법령 캐시를 만들지 못했어요", pay_count=0)
-        review = review_receipts(find_job(settings.data_dir, t, trip), receipts, law)
+            book = service.law_book(today)
+            if book is None:
+                return render(request, "review.html", **(empty | dict(base=base, status=status, done=done_steps(status), job=None,
+                              law_error=job.message or "여비 규정을 준비하지 못했어요")))
+        review = review_receipts(find_job(settings.data_dir, t, trip), receipts, book, service.file_owners())
         by_id = {r.receipt_id: r for r in review.receipts}
         rows = []
         for d in order_decisions(review.decisions, review.receipts):
@@ -247,7 +250,8 @@ def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) 
             rows.append({"decision": d, "receipt": r, "label": label, "day": day, "kind": resolve_kind(d, r)})
         pay_count = sum(1 for d in review.decisions if d.verdict.value in ("지급", "감액지급"))
         return render(request, "review.html", base=base, status=status, done=done_steps(status), job=None, review=review, rows=rows,
-                      law=law, law_error=None, pay_count=pay_count)
+                      law=review.law, law_error=None, law_notes=review.law_notes, notices=book.notices(today), pay_count=pay_count,
+                      error=ERRORS.get(error))
 
     @app.post("/t/{traveler}/{trip_id}/resolve")
     async def resolve(request: Request, traveler: str, trip_id: str):
@@ -262,6 +266,8 @@ def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) 
     def finalize(traveler: str, trip_id: str):
         status = existing(traveler, trip_id)
         t, trip = status.traveler, status.trip_id
+        if status.stale:  # 새로 올린 영수증은 판정을 검토하지 않았으므로 서류에 넣지 않는다
+            return see_other(f"{trip_base(t, trip)}/review?error=stale")
         jobs.submit(job_key(t, trip), "finalize", lambda: run_with_clients(lambda c: actions.do_finalize(settings, c, deps.vlm, t, trip)))
         return see_other(f"{trip_base(t, trip)}/result")
 

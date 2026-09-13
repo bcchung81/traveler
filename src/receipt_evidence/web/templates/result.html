@@ -67,6 +67,7 @@
           <div class="row" style="flex-wrap:nowrap">{{ tick }}<span>출장 개요</span></div>
           <div class="row" style="flex-wrap:nowrap">{{ tick }}<span>지급대상 요약 · 영수증별 상세 {{ result.decisions|length }}행</span></div>
           <div class="row" style="flex-wrap:nowrap">{{ tick }}<span>적용 규정 · 공무원 여비 규정({{ result.law_effective|kdate }} 시행)</span></div>
+          {% for n in result.law_notes %}<div class="hint">※ {{ n }}</div>{% endfor %}
           <div class="row" style="flex-wrap:nowrap">{{ tick }}<span>확인필요 사항 {{ result.review_items|length }}건</span></div>
           <div class="row" style="flex-wrap:nowrap">{{ tick }}<span>붙임 영수증 {{ result.receipts|length }}건</span></div>
         </div>

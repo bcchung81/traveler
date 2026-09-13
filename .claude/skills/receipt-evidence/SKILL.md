@@ -17,6 +17,12 @@ description: data/<출장자>/<출장>/ 폴더의 영수증을 로컬 Qwen3-VL�
 - 스크립트 없이 `uv run receipt-evidence web`만 띄우면 로컬 AI는 새 영수증을 읽을 때만 자동으로 켜지고 다 읽으면 꺼진다.
 - 홈 → 새 정산 → 올리기 → 읽은 값 확인 → 판정 검토 → 서류 완성 순서.
 
+## 인터넷 없이 쓰기·최신 규정
+- 인터넷이 될 때 한 번 `uv run receipt-evidence prepare`를 실행해 두면(최신 여비 규정 조회·MCP 패키지 내려받기·로컬 AI 확인) 이후에는 인터넷 없이 읽기·판정·서류 만들기가 된다.
+- 여비 규정은 하루 한 번 korean-law MCP로 현행본을 조회한다. 조회에 실패하면 받아 둔 가장 최근 규정(없으면 저장소에 동봉한 기준본)으로 판정하고, 결과·서류에 "인터넷에 연결되지 않아 … 규정을 적용함"을 남긴다. 이 안내가 보이면 사용자에게 알린다.
+- 규정 개정(MST 변경)이 감지되면 요약·화면에 "여비 규정이 개정됐어요"가 뜬다. 조문 금액(제18조·제16조)을 읽지 못한 항목은 확인필요가 된다 — 임의로 옛 금액을 적용하지 않는다.
+- 출장 시작일에 시행되던 규정을 갖고 있으면 그 규정으로, 없으면 현행 규정으로 판정하고 안내만 붙인다.
+
 ## 절차
 1. VLM은 미리 켜지 않는다: `run`이 새 영수증을 읽어야 할 때만 `scripts/start_vlm.sh`로 켜고 끝나면 끈다. 영수증이 많으면 직접 `VLM_PARALLEL=4 bash scripts/start_vlm.sh &`로 켜고 `--workers 4`를 쓴 뒤, 끝나면 그 서버를 꼭 끈다.
 2. 영수증이 `data/` 루트나 출장자 폴더에 바로 있으면 어느 출장자·출장인지 **사용자에게 묻고 확인을 받은 뒤** 폴더로 옮긴다. 임의로 옮기지 않는다.
@@ -36,4 +42,5 @@ description: data/<출장자>/<출장>/ 폴더의 영수증을 로컬 Qwen3-VL�
 ## 산출물
 - `out/<출장자>/<출장>/latest.json` — 최신 버전 번호
 - `out/<출장자>/<출장>/v<N>/` — evidence.hwpx, report.md, decisions.json, verify.json, changes.md(v2부터), attachments/
-- `out/summary-<run_id>.md` / `.json` — 일괄 요약
+- `out/summary-<run_id>.md` / `.json` — 일괄 요약(규정 안내 포함)
+- `out/.cache/law/` — 받아 둔 규정(snapshots/<MST>.json)·오늘 조회 결과(status.json)·개정 기록(amendments.json)

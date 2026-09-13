@@ -75,3 +75,51 @@ def test_nfd_folder_names_from_finder_are_normalized(tmp_path):
     assert [(j.traveler, j.trip_id) for j in jobs] == [("정백철", "2026-07-09_서울")]
     assert load_traveler(jobs[0].traveler_dir).name == "정백철"
     assert propose_trip(nfd("2026-07-09_서울"), [], {"traveler_name": "x", "trip_id": "t"}).destination_region == "서울"
+
+import json, os, threading
+import pytest
+from receipt_evidence.workspace import BusyError, HashCache, NotFound, clear_warnings, out_lock, trip_file_owners
+
+def test_overrides_revalidate_changed_amount_and_clear_last(tmp_path):
+    t = tmp_path / "t.txt"; t.write_text("결제금액 48,200원 승인번호 7000001", encoding="utf-8")
+    r = _rail("r1", date(2026, 7, 9), "나주", "용산").model_copy(update={"approval_no": "7000001", "transcript_path": str(t)})
+    typo = apply_overrides([r], {"r1": {"amount": 42800}})[0]
+    assert typo.amount == 42800 and "AMOUNT_NOT_IN_TRANSCRIPT" in typo.warnings  # 사용자 수정값도 원문과 대조한다
+    ok = apply_overrides([r], {"r1": {"amount": 42800, "clear_warnings": ["AMOUNT_NOT_IN_TRANSCRIPT"]}})[0]
+    assert "AMOUNT_NOT_IN_TRANSCRIPT" not in ok.warnings
+    later = clear_warnings([ok.model_copy(update={"warnings": ["DUP_ACROSS_TRIPS", "LODGING_OVERLAP"]})], {"r1": {"clear_warnings": ["DUP_ACROSS_TRIPS"]}})
+    assert later[0].warnings == ["LODGING_OVERLAP"]
+
+def test_overrides_recompute_duplicate_approval(tmp_path):
+    a = _rail("a", date(2026, 7, 9), "나주", "용산").model_copy(update={"approval_no": "1", "warnings": ["DUP_APPROVAL"]})
+    b = _rail("b", date(2026, 7, 10), "용산", "나주").model_copy(update={"approval_no": "1", "warnings": ["DUP_APPROVAL"]})
+    out = apply_overrides([a, b], {"b": {"approval_no": "2"}})
+    assert "DUP_APPROVAL" not in out[0].warnings and "DUP_APPROVAL" not in out[1].warnings
+
+def test_hash_cache_reuses_until_file_changes(tmp_path, monkeypatch):
+    f = tmp_path / "a.jpg"; f.write_bytes(b"one")
+    calls = []
+    import receipt_evidence.workspace as ws
+    real = ws.sha256_file
+    monkeypatch.setattr(ws, "sha256_file", lambda p: calls.append(p) or real(p))
+    hc = HashCache(tmp_path / "hashes.json")
+    first = hc.sha256(f); hc.flush()
+    assert HashCache(tmp_path / "hashes.json").sha256(f) == first and len(calls) == 1
+    f.write_bytes(b"two-changed"); os.utime(f, ns=(1, 2_000_000_000))
+    assert HashCache(tmp_path / "hashes.json").sha256(f) != first and len(calls) == 2
+
+def test_out_lock_rejects_second_holder(tmp_path):
+    with out_lock(tmp_path):
+        with pytest.raises(BusyError, match="실행 중"):
+            with out_lock(tmp_path):
+                pass
+    with out_lock(tmp_path):  # 풀린 뒤에는 다시 잡힌다
+        pass
+
+def test_trip_file_owners_cover_all_trips(tmp_path):
+    root = _tree(tmp_path / "data")
+    owners = trip_file_owners(root, HashCache(tmp_path / "h.json"))
+    keys = {k for ks in owners.values() for k in ks}
+    assert {"정백철/2026-07-09_서울", "정백철/2026-08-03_부산", "홍길동/2026-07-20_대전"} == keys
+    assert len(owners) == 1  # _tree는 모든 파일 내용이 b"x"로 같다 → 한 해시에 세 출장
+    assert issubclass(NotFound, LookupError)

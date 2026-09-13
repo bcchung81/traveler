@@ -14,6 +14,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from ..mcp_client import kordoc_caller, law_caller
 from ..pipeline import Clients
 from ..vlm import LlamaServerClient
+from ..workspace import NotFound
 from .jobs import JobManager
 from .service import InvalidName, TripService
 from .vlm_process import VlmManager, default_vlm_manager
@@ -50,6 +51,28 @@ def trip_base(traveler: str, trip_id: str) -> str:
 def see_other(url: str) -> RedirectResponse:
     return RedirectResponse(url, status_code=303)
 
+def _back_link(request: Request) -> str:
+    """같은 사이트 안의 이전 화면으로만 돌아간다(다른 사이트 주소는 무시)."""
+    ref = request.headers.get("referer", "")
+    host = request.headers.get("host", "")
+    for prefix in (f"http://{host}", f"https://{host}"):
+        if host and ref.startswith(prefix + "/"):
+            return ref[len(prefix):]
+    return "/"
+
+def _friendly(exc: Exception) -> str:
+    errors = getattr(exc, "errors", None)
+    if callable(errors):  # pydantic ValidationError: 첫 항목만 사람이 읽는 말로
+        try:
+            e = errors()[0]
+            return f"{'.'.join(str(x) for x in e.get('loc', ()))}: {e.get('msg', '')}".strip(": ")
+        except Exception:
+            pass
+    text = str(exc)
+    if "isoformat" in text or "does not match format" in text:
+        return f"날짜는 YYYY-MM-DD 형식으로 입력해 주세요 ({text})"
+    return text
+
 def create_app(settings: WebSettings, deps: WebDeps | None = None) -> FastAPI:
     deps = deps or default_deps(settings)
 
@@ -71,21 +94,23 @@ def create_app(settings: WebSettings, deps: WebDeps | None = None) -> FastAPI:
                 return PlainTextResponse("다른 사이트에서 보낸 요청은 받지 않아요", status_code=403)
         return await call_next(request)
 
-    @app.exception_handler(InvalidName)
-    async def invalid_name(request: Request, exc: InvalidName):
-        return PlainTextResponse(str(exc), status_code=400)
+    templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
 
+    def error_page(request: Request, status_code: int, title: str, message: str) -> HTMLResponse:
+        return templates.TemplateResponse(request, "error.html", {"title": title, "message": message, "back": _back_link(request),
+                                                                   "vlm_status": deps.vlm.status()}, status_code=status_code)
+
+    @app.exception_handler(InvalidName)
     @app.exception_handler(ValueError)
     async def bad_value(request: Request, exc: ValueError):
-        return PlainTextResponse(str(exc), status_code=400)
+        return error_page(request, 400, "입력한 값을 확인해 주세요", _friendly(exc))
 
+    # 사용자가 가리킨 대상이 없을 때만 404. 코드 버그로 난 KeyError 등은 가리지 않는다
     @app.exception_handler(FileNotFoundError)
-    @app.exception_handler(KeyError)
-    @app.exception_handler(LookupError)
+    @app.exception_handler(NotFound)
     async def not_found(request: Request, exc: Exception):
-        return PlainTextResponse(f"찾을 수 없어요: {exc}", status_code=404)
+        return error_page(request, 404, "찾을 수 없어요", str(exc))
 
-    templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
     templates.env.filters["won"] = lambda n: "—" if n is None else f"{int(n):,}"
     templates.env.filters["kdate"] = lambda d: "미정" if not d else f"{d.year}. {d.month}. {d.day}."
     app.mount("/static", StaticFiles(directory=str(WEB_DIR / "static")), name="static")
@@ -102,7 +127,7 @@ def create_app(settings: WebSettings, deps: WebDeps | None = None) -> FastAPI:
         groups: dict[str, list] = {}
         for t in trips:
             groups.setdefault(t.traveler, []).append(t)
-        return render(request, "home.html", trips=trips, groups=list(groups.items()))
+        return render(request, "home.html", trips=trips, groups=list(groups.items()), notices=deps.service.law_notices(date.today()))
 
     @app.get("/vlm", response_class=HTMLResponse)
     def vlm_badge(request: Request):

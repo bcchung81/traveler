@@ -1,15 +1,16 @@
 # src/receipt_evidence/extract.py
 from __future__ import annotations
-import json, re
+import json, logging, re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 import httpx
-from .cache import ExtractCache
+from .cache import ExtractCache, cache_key
 from .models import Category, Receipt, ReceiptImage
 from .vlm import VlmClient, image_content
 
+log = logging.getLogger("receipt_evidence")
 _STR = {"type": ["string", "null"]}
 RECEIPT_SCHEMA: dict = {
     "type": "object", "additionalProperties": False,
@@ -127,22 +128,28 @@ def group_by_source(images: list[ReceiptImage]) -> list[list[ReceiptImage]]:
 def _extract_group(vlm: VlmClient, group: list[ReceiptImage], tdir: Path, cache: ExtractCache | None) -> Receipt:
     first = group[0]
     tpath = tdir / f"{first.image_id}.txt"
-    cached = cache.get(first.sha256) if cache is not None else None
+    key = cache_key(first)
+    cached = cache.get(key) if cache is not None else None
+    error = None
     if cached is not None:
         transcript, data = cached["transcript"], cached["data"]
     else:
-        pages = []
-        for img in group:
-            text = vlm.chat([{"role": "user", "content": [{"type": "text", "text": TRANSCRIBE_PROMPT}, image_content(Path(img.png_path))]}], max_tokens=2048)
-            pages.append(text if len(group) == 1 else f"[{img.page}쪽]\n{text}")
-        transcript = "\n\n".join(pages)
-        data = _structure(vlm, [Path(i.png_path) for i in group], transcript)
+        try:
+            pages = []
+            for img in group:
+                text = vlm.chat([{"role": "user", "content": [{"type": "text", "text": TRANSCRIBE_PROMPT}, image_content(Path(img.png_path))]}], max_tokens=2048)
+                pages.append(text if len(group) == 1 else f"[{img.page}쪽]\n{text}")
+            transcript = "\n\n".join(pages)
+            data = _structure(vlm, [Path(i.png_path) for i in group], transcript)
+        except Exception as e:  # 영수증 한 장의 실패(연결 끊김 등)가 출장 전체를 멈추지 않게 한다. 캐시에 넣지 않아 다음에 다시 읽는다
+            log.warning("영수증 읽기 실패 %s: %s", first.source_path, e)
+            transcript, data, error = "", None, f"{type(e).__name__}: {e}"
         if cache is not None and data is not None:
-            cache.put(first.sha256, transcript, data)
+            cache.put(key, transcript, data)
     tpath.write_text(transcript, encoding="utf-8")
     if data is None:
         return Receipt(receipt_id=first.image_id, image_id=first.image_id, sha256=first.sha256, transcript_path=str(tpath),
-                       warnings=["EXTRACT_FAILED"], confidence=0.0)
+                       warnings=["EXTRACT_FAILED"], confidence=0.0, raw={"error": error} if error else {})
     r = to_receipt(first.image_id, data, str(tpath))
     category, hit = infer_category(r.category, r.merchant, transcript)
     if hit:

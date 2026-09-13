@@ -1,16 +1,82 @@
 # src/receipt_evidence/workspace.py
 from __future__ import annotations
-import re, unicodedata
+import fcntl, json, os, re, threading, unicodedata
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 import yaml
-from .ingest import SUPPORTED
+from .ingest import SUPPORTED, sha256_file
 from .models import Category, Receipt, TravelerProfile, TripConfig
+from .validate import FIELD_GROUP, mark_dup_approval, validate_receipt
 
 TRIP_DIR_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})_([^_]+)")
 TRIP_YAML_FIELDS = ("start_date", "end_date", "destination_region", "purpose", "route_stations", "lodging_region",
                     "over_cap_reason", "taxi_reason", "official_vehicle", "within_workplace", "duration_hours")
+
+class NotFound(LookupError):
+    """사용자가 가리킨 출장·영수증이 없음(웹에서 404). 코드 버그로 난 KeyError와 구분하려고 따로 둔다."""
+
+class BusyError(RuntimeError):
+    """같은 out/ 폴더에서 다른 정산 작업(CLI 또는 웹)이 이미 돌고 있음."""
+
+@contextmanager
+def out_lock(out_dir: Path) -> Iterator[None]:
+    """out/ 쓰기 작업을 프로세스 사이에서 하나만 돌게 한다. 기다리지 않고 바로 알린다."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    f = open(out_dir / ".lock", "w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        f.close()
+        raise BusyError("다른 정산 작업(CLI 또는 웹)이 실행 중이에요. 끝난 뒤 다시 실행해 주세요") from None
+    try:
+        yield
+    finally:
+        fcntl.flock(f, fcntl.LOCK_UN)
+        f.close()
+
+class HashCache:
+    """파일 경로 → (크기, 수정시각, sha256). 크기·수정시각이 같으면 다시 읽지 않는다(홈 화면·출장 간 중복 검사용)."""
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        self._lock = threading.Lock()
+        self._data: dict[str, list] | None = None
+        self._dirty = False
+
+    def _entries(self) -> dict[str, list]:
+        if self._data is None:
+            try:
+                self._data = json.loads(self.path.read_text(encoding="utf-8"))
+            except (FileNotFoundError, ValueError):
+                self._data = {}
+        return self._data
+
+    def sha256(self, path: Path) -> str:
+        st = path.stat()
+        key, sig = str(path.resolve()), [st.st_size, st.st_mtime_ns]
+        with self._lock:
+            hit = self._entries().get(key)
+            if hit and hit[:2] == sig:
+                return hit[2]
+        digest = sha256_file(path)
+        with self._lock:
+            self._entries()[key] = sig + [digest]
+            self._dirty = True
+        return digest
+
+    def flush(self) -> None:
+        with self._lock:
+            if not self._dirty:
+                return
+            data = {k: v for k, v in self._entries().items() if os.path.exists(k)}
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.with_suffix(f".{threading.get_ident()}.tmp")
+            tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(self.path)
+            self._data, self._dirty = data, False
 
 @dataclass(frozen=True)
 class TripJob:
@@ -50,6 +116,21 @@ def discover(data_dir: Path, travelers: list[str] | None = None, trips: list[str
                 continue
             jobs.append(TripJob(traveler=traveler, trip_id=trip_id, traveler_dir=tdir, trip_dir=trip))
     return jobs, warnings
+
+def trip_key(traveler: str, trip_id: str) -> str:
+    return f"{traveler}/{trip_id}"
+
+def trip_file_owners(data_dir: Path, hashes: HashCache) -> dict[str, set[str]]:
+    """data/ 전체 출장 폴더의 영수증 파일 해시 → 그 파일이 있는 출장들. 웹(출장 1건)과 CLI(일괄)가 같은 기준으로 중복을 본다."""
+    owners: dict[str, set[str]] = {}
+    if not data_dir.exists():
+        return owners
+    for job in discover(data_dir)[0]:
+        for p in job.trip_dir.iterdir():
+            if _is_receipt(p):
+                owners.setdefault(hashes.sha256(p), set()).add(trip_key(job.traveler, job.trip_id))
+    hashes.flush()
+    return owners
 
 def _yaml(path: Path) -> dict:
     if not path.exists():
@@ -110,17 +191,39 @@ def dump_trip_yaml(trip: TripConfig) -> str:
 def load_overrides(trip_dir: Path) -> dict[str, dict]:
     return {str(k): (v or {}) for k, v in _yaml(trip_dir / "overrides.yaml").items()}
 
+def _transcript(r: Receipt) -> str:
+    try:
+        return Path(r.transcript_path).read_text(encoding="utf-8") if r.transcript_path else ""
+    except OSError:
+        return ""
+
+def clear_warnings(receipts: list[Receipt], overrides: dict[str, dict]) -> list[Receipt]:
+    """사용자가 '확인함'으로 해제한 경고를 지운다. 교차검사가 경고를 더한 뒤에도 다시 불러 마지막에 적용한다."""
+    out = []
+    for r in receipts:
+        cleared = set((overrides.get(r.receipt_id) or {}).get("clear_warnings", []))
+        kept = [w for w in r.warnings if w not in cleared]
+        out.append(r if kept == r.warnings else r.model_copy(update={"warnings": kept}))
+    return out
+
 def apply_overrides(receipts: list[Receipt], overrides: dict[str, dict]) -> list[Receipt]:
+    """사용자 확인값을 합친다. 고친 필드는 영수증 원문과 다시 대조하고, 해제한 경고는 마지막에 지운다."""
     out: list[Receipt] = []
+    changed = False
     for r in receipts:
         o = overrides.get(r.receipt_id)
         if not o:
             out.append(r)
             continue
-        cleared = set(o.get("clear_warnings", []))
         fields = {k: v for k, v in o.items() if k not in ("warnings", "clear_warnings", "receipt_id", "image_id", "sha256")}
         merged = r.model_dump() | fields
-        merged["warnings"] = [w for w in r.warnings if w not in cleared]
         merged["raw"] = r.raw | {"overrides": o}
-        out.append(Receipt.model_validate(merged))
-    return out
+        new = Receipt.model_validate(merged)
+        groups = {FIELD_GROUP[k] for k in fields if k in FIELD_GROUP}
+        if groups:
+            new = validate_receipt(new, _transcript(new), only=groups)
+        changed = changed or "approval_no" in fields
+        out.append(new)
+    if changed:
+        out = mark_dup_approval(out)
+    return clear_warnings(out, overrides)

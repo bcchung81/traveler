@@ -17,6 +17,8 @@ class ReceiptImage(BaseModel):
     sha256: str
     width: int
     height: int
+    orientation: int = 1  # 원본 사진의 EXIF 방향값(1=그대로). 회전해 읽은 이미지는 추출 캐시 키를 따로 쓴다
+    ingest_version: str = ""
 
 class Receipt(BaseModel):
     receipt_id: str
@@ -56,6 +58,19 @@ class RateTable(BaseModel):
     lodging_caps: dict[str, int] | None = None
     meal_allowance: int
 
+class LawParams(BaseModel):
+    """조문 본문에서 읽은 금액·비율. 문구가 바뀌어 못 읽은 값은 None으로 두고 해당 판정을 확인필요로 돌린다."""
+    in_city_hours: float | None = None          # 제18조① 기준 시간(4시간)
+    in_city_long: int | None = None             # 제18조① 기준 시간 이상(2만원)
+    in_city_short: int | None = None            # 제18조① 기준 시간 미만(1만원)
+    in_city_vehicle_cut: int | None = None      # 제18조① 공무용 차량 이용 시 감액(1만원)
+    over_cap_ratio: tuple[int, int] | None = None       # 제16조① 숙박비 상한 초과 추가지급 한도(분자, 분모) = 10분의 3
+    vehicle_daily_ratio: tuple[int, int] | None = None  # 제16조③ 공무용 차량 이용 시 일비 지급 비율 = 2분의 1
+
+    @property
+    def complete(self) -> bool:
+        return all(v is not None for v in self.model_dump().values())
+
 class LawSnapshot(BaseModel):
     law_name: str
     law_id: str
@@ -66,6 +81,7 @@ class LawSnapshot(BaseModel):
     annexes: dict[str, str] = Field(default_factory=dict)
     articles: dict[str, str] = Field(default_factory=dict)
     rate_tables: dict[str, RateTable] = Field(default_factory=dict)
+    params: LawParams = Field(default_factory=LawParams)
 
 class TravelerProfile(BaseModel):
     name: str
@@ -138,6 +154,7 @@ class PipelineResult(BaseModel):
     cache_hits: int = 0
     cache_misses: int = 0
     error: str | None = None
+    law_notes: list[str] = Field(default_factory=list)
 
 class BatchResult(BaseModel):
     run_id: str
@@ -145,3 +162,4 @@ class BatchResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     summary_md_path: str
     summary_json_path: str
+    notices: list[str] = Field(default_factory=list)

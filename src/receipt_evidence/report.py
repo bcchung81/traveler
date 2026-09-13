@@ -3,8 +3,9 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import date
 from .models import Category, Decision, LawSnapshot, Receipt, TripConfig, Verdict
-from .rules import totals
+from .rules import _ratio_text, _won_text, totals
 
+REPORT_VERSION = "d2"  # 보고서·HWPX 서식을 바꾸면 올린다 → fingerprint가 달라져 새 버전 문서가 생성됨
 DETAIL_HEADERS = ["연번", "일자", "구분", "가맹점", "승인번호", "결제액", "인정액", "판정", "근거"]
 _CAT_ORDER = {c: i for i, c in enumerate(Category)}
 
@@ -38,7 +39,7 @@ def order_decisions(decisions: list[Decision], receipts: list[Receipt]) -> list[
     return sorted(decisions, key=key)
 
 def build_markdown(trip: TripConfig, law: LawSnapshot, receipts: list[Receipt], decisions: list[Decision],
-                   image_names: dict[str, list[str]], version: int | None = None) -> str:
+                   image_names: dict[str, list[str]], version: int | None = None, law_notes: list[str] | None = None) -> str:
     by_id = {r.receipt_id: r for r in receipts}
     ordered = order_decisions(decisions, receipts)
     t = totals(decisions)
@@ -71,8 +72,13 @@ def build_markdown(trip: TripConfig, law: LawSnapshot, receipts: list[Receipt], 
     for g, rt in law.rate_tables.items():
         caps = ", ".join(f"{k} {fmt_won(v)}" for k, v in rt.lodging_caps.items()) if rt.lodging_caps else "실비"
         md.append(f"- {g}: 철도 {rt.rail}, 일비 {fmt_won(rt.daily_allowance)}/일, 식비 {fmt_won(rt.meal_allowance)}/일, 숙박비 {caps}")
-    md += ["- 제16조: 숙박비는 숙박한 밤의 수, 일비·식비는 여행일수 기준. 상한 초과 시 부득이한 사유가 있으면 상한액의 10분의 3 이내 추가지급 가능",
-           "- 제18조: 근무지 내 국내출장은 정액(4시간 이상 2만원, 미만 1만원)", "", "## 확인필요 사항"]
+    p = law.params
+    hours = f"{p.in_city_hours:g}시간" if p.in_city_hours is not None else "(조문 확인 필요)"
+    md += [f"- 제16조: 숙박비는 숙박한 밤의 수, 일비·식비는 여행일수 기준. 상한 초과 시 부득이한 사유가 있으면 상한액의 {_ratio_text(p.over_cap_ratio)} 이내 추가지급 가능",
+           f"- 제18조: 근무지 내 국내출장은 정액({hours} 이상 {_won_text(p.in_city_long)}, 미만 {_won_text(p.in_city_short)})",
+           "- 별표2 비고 5: 통합특별시 숙박비는 종전 전라남도 시·군과 광주광역시를 기준으로 적용"]
+    md += [f"※ {n}" for n in (law_notes or [])]
+    md += ["", "## 확인필요 사항"]
     reviews = [d for d in ordered if d.verdict is Verdict.REVIEW]
     md += [f"- {d.item}({d.receipt_id or '정액'}): {'; '.join(d.reasons)}" for d in reviews] or ["- 없음"]
     md += ["", "## 붙임"]

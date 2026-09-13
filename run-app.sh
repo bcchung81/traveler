@@ -80,7 +80,7 @@ start_web() {
     echo "웹앱: 포트 ${PORT}을(를) 다른 프로그램(${owner})이 쓰고 있어요. PORT=다른번호 로 실행하세요" >&2
     return 1
   fi
-  uv sync --frozen -q || return 1
+  uv sync --frozen --offline -q 2>/dev/null || uv sync --frozen -q || return 1  # 인터넷이 없어도 설치된 패키지로 켠다
   nohup .venv/bin/receipt-evidence web --port "$PORT" --vlm-url "http://127.0.0.1:${VLM_PORT}" > "$RUN_DIR/web.log" 2>&1 &
   echo $! > "$WEB_PID"
   for _ in $(seq 1 60); do

@@ -2,7 +2,7 @@
 import json, unicodedata
 from datetime import date
 from pathlib import Path
-from receipt_evidence.models import Receipt, Category, Verdict
+from receipt_evidence.models import LawParams, Receipt, Category, Verdict
 from receipt_evidence.rules import (RULES, allowance_rows, apply_cross_checks, decide_all, decide_receipt, mark_cross_trip_duplicates,
                                     region_key, review_items, totals)
 
@@ -12,6 +12,14 @@ def test_region_key():
     assert region_key("서울 강남구") == "서울특별시" and region_key("부산광역시") == "광역시" and region_key("광주") == "광역시"
     assert region_key("전남 나주시") == "그 밖의 지역" and region_key("경기도 수원") == "그 밖의 지역"
     assert region_key(unicodedata.normalize("NFD", "서울 강남구")) == "서울특별시"  # NFD 입력도 같은 상한
+
+def test_region_key_unified_special_city_annex2_note5():
+    # 별표2 비고 5: 통합특별시는 종전 전라남도 시·군(그 밖의 지역)과 광주광역시(광역시)를 기준으로 한다
+    assert region_key("전남광주통합특별시 목포시") == "그 밖의 지역" and region_key("통합특별시 여수") == "그 밖의 지역"
+    assert region_key("전남광주통합특별시 광산구") == "광역시" and region_key("통합특별시 (종전 광주광역시) 동구") == "광역시"
+    assert region_key("전남광주통합특별시") is None and region_key("광주전남 통합특별시") is None  # 종전 구역을 알 수 없음
+    assert region_key("광주시") is None  # 경기도 광주시와 헷갈리는 표기는 정하지 않는다
+    assert region_key("경기도 광주시") == "그 밖의 지역" and region_key("세종특별자치시") == "그 밖의 지역"
 
 def test_golden_three(trip, law_snapshot):
     ds = decide_all(GOLD, trip, law_snapshot)
@@ -90,3 +98,46 @@ def test_proposed_trip_allowances_need_review(trip, law_snapshot):
     rows = allowance_rows(trip.model_copy(update={"proposed": True}), law_snapshot)
     assert [r.item for r in rows] == ["일비", "식비"]
     assert all(r.verdict is Verdict.REVIEW and r.approved_amount == 0 for r in rows) and "50,000" in rows[0].reasons[0]
+
+
+def _stay(**kw):
+    base = dict(receipt_id="s", image_id="s", category=Category.LODGING, amount=90000, service_date=date(2026, 7, 9), region="서울")
+    return Receipt(**(base | kw))
+
+def test_unified_city_lodging_needs_review_until_resolved(trip, law_snapshot):
+    t = trip.model_copy(update={"end_date": date(2026, 7, 10)})
+    d = decide_receipt(_stay(region="전남광주통합특별시", amount=75000), t, law_snapshot)
+    assert d.verdict is Verdict.REVIEW and "별표2 비고 5" in d.basis and "시·군·구" in d.reasons[0]
+    d = decide_receipt(_stay(region="전남광주통합특별시", amount=75000), t.model_copy(update={"lodging_region": "목포시"}), law_snapshot)
+    assert d.verdict is Verdict.REDUCED and d.approved_amount == 70000 and "별표2 비고 5" in d.basis
+    d = decide_receipt(_stay(region="전남광주통합특별시 광산구", amount=75000), t, law_snapshot)
+    assert d.verdict is Verdict.PAY and d.approved_amount == 75000 and "광역시" in d.basis[0]
+
+def test_lodging_nights_from_check_in_and_out(trip, law_snapshot):
+    t = trip.model_copy(update={"end_date": date(2026, 7, 11)})
+    two = _stay(amount=190000, service_end_date=date(2026, 7, 11))
+    d = decide_receipt(two, t, law_snapshot)
+    assert d.verdict is Verdict.PAY and d.approved_amount == 190000 and "2박" in d.reasons[0]  # 상한 100,000×2박
+    out = apply_cross_checks([two], trip)  # 출장 2일(1박)인데 2박 영수증
+    assert "LODGING_NIGHTS_EXCEED" in out[0].warnings
+
+def test_over_cap_uses_article_ratio_and_deadline_note(trip, law_snapshot):
+    t = trip.model_copy(update={"over_cap_reason": "행사장 인근 만실"})
+    d = decide_receipt(_stay(amount=150000), t, law_snapshot)
+    assert d.approved_amount == 130000 and any("2026. 7. 17.까지" in r and "제16조제2항" in r for r in d.reasons)
+    other = law_snapshot.model_copy(update={"params": law_snapshot.params.model_copy(update={"over_cap_ratio": (5, 10)})})
+    assert decide_receipt(_stay(amount=160000), t, other).approved_amount == 150000
+    unknown = law_snapshot.model_copy(update={"params": law_snapshot.params.model_copy(update={"over_cap_ratio": None})})
+    d = decide_receipt(_stay(amount=150000), t, unknown)
+    assert d.verdict is Verdict.REVIEW and d.approved_amount == 0 and "제16조" in d.reasons[0]  # 확인필요는 인정액에 넣지 않는다
+
+def test_in_city_and_vehicle_amounts_come_from_articles(trip, law_snapshot):
+    t = trip.model_copy(update={"within_workplace": True, "duration_hours": 3, "official_vehicle": True})
+    changed = law_snapshot.model_copy(update={"params": LawParams(in_city_hours=4, in_city_long=30000, in_city_short=15000, in_city_vehicle_cut=5000,
+                                                                  over_cap_ratio=(3, 10), vehicle_daily_ratio=(1, 2))})
+    assert allowance_rows(t, changed)[0].approved_amount == 10000
+    blank = law_snapshot.model_copy(update={"params": LawParams()})
+    row = allowance_rows(t, blank)[0]
+    assert row.verdict is Verdict.REVIEW and "제18조" in row.reasons[0]
+    half = allowance_rows(trip.model_copy(update={"official_vehicle": True}), blank)
+    assert half[0].item == "일비" and half[0].verdict is Verdict.REVIEW and half[1].verdict is Verdict.PAY

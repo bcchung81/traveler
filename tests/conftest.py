@@ -2,7 +2,7 @@
 from datetime import date, datetime
 from pathlib import Path
 import pytest
-from receipt_evidence.models import LawSnapshot, RateTable, TripConfig
+from receipt_evidence.models import LawParams, LawSnapshot, RateTable, TripConfig
 
 FIX = Path(__file__).parent / "fixtures" / "law"
 
@@ -16,7 +16,8 @@ def law_snapshot():
         fetched_at=datetime(2026, 9, 13, 12, 0), rate_tables={
             "제1호": RateTable(grade="제1호", rail="실비(특실)", ship="실비(1등급)", air="실비", car="실비", daily_allowance=25000, lodging="실비", lodging_caps=None, meal_allowance=25000),
             "제2호": RateTable(grade="제2호", rail="실비(일반실)", ship="실비(2등급)", air="실비", car="실비", daily_allowance=25000, lodging="실비",
-                                lodging_caps={"서울특별시": 100000, "광역시": 80000, "그 밖의 지역": 70000}, meal_allowance=25000)})
+                                lodging_caps={"서울특별시": 100000, "광역시": 80000, "그 밖의 지역": 70000}, meal_allowance=25000)},
+        params=LawParams(in_city_hours=4, in_city_long=20000, in_city_short=10000, in_city_vehicle_cut=10000, over_cap_ratio=(3, 10), vehicle_daily_ratio=(1, 2)))
 
 @pytest.fixture
 def trip():

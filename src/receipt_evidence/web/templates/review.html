@@ -3,7 +3,7 @@
 {% block title %}지급 판정 검토 · 여비정산 증빙{% endblock %}
 {% block meta %}{{ status.traveler }} · {{ status.trip_id }}{% if review %} · 여비 구분 {{ review.trip.grade or "미확정" }}{% endif %}{% endblock %}
 {% block cta %}
-{% if review and not (job and job.active) %}
+{% if review and not (job and job.active) and not status.stale %}
 <form method="post" action="{{ base }}/finalize">
   <button class="cta" type="submit">HWPX 증빙서류 만들기 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></button>
 </form>
@@ -21,8 +21,10 @@
     <a class="btn btn--yellow" href="{{ base }}/review">다시 시도</a>
   </section>
 {% elif review %}
+  {% if error %}<div class="banner banner--error" role="alert">{{ error }}</div>{% endif %}
+  {% for n in notices %}<div class="banner" role="status">{{ n }}</div>{% endfor %}
   {% if status.stale %}
-  <div class="banner">파일이 바뀌었어요 — 새로 올린 영수증은 아직 판정에 없어요.
+  <div class="banner">파일이 바뀌었어요 — 새로 올린 영수증은 아직 판정에 없어요. 다시 읽은 뒤에 서류를 만들 수 있어요.
     <form method="post" action="{{ base }}/extract"><button class="btn btn--small" type="submit">다시 읽기</button></form>
   </div>
   {% endif %}
@@ -33,6 +35,7 @@
         <div class="row" style="align-items:baseline;gap:8px"><span class="num total-big">{{ review.totals.approved|won }}</span><span class="title">원</span></div>
         <div class="hint" style="color:rgba(250,248,242,0.7)">청구 {{ review.totals.claimed|won }} · 확인필요 {{ review.totals.review|won }} 별도</div>
         <div class="hint" style="color:rgba(250,248,242,0.7)">공무원 여비 규정 · {{ law.effective|kdate }} 시행</div>
+        {% for n in law_notes %}<div class="hint" style="color:var(--yellow)">※ {{ n }}</div>{% endfor %}
       </section>
 
       {% if review_count %}

@@ -7,10 +7,11 @@ from pathlib import Path
 import yaml
 from ..extract import parse_datetime
 from ..ingest import SUPPORTED, sha256_file
-from ..law import load_snapshot
-from ..models import Category, LawSnapshot, PipelineResult, Receipt, ReceiptImage, TravelerProfile
+from ..law import LawBook, load_law_book, peek_law_book
+from ..models import Category, PipelineResult, Receipt, ReceiptImage, TravelerProfile
 from ..versioning import read_latest
-from ..workspace import TRIP_DIR_RE, TRIP_YAML_FIELDS, apply_overrides, load_overrides, load_traveler, nfc
+from ..workspace import (TRIP_DIR_RE, TRIP_YAML_FIELDS, HashCache, NotFound, apply_overrides, load_overrides, load_traveler, nfc,
+                         trip_file_owners)
 
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024
 PROFILE_FIELDS = ("position", "grade", "org", "dept", "workplace_region", "approval")
@@ -116,6 +117,7 @@ class TripService:
     def __init__(self, data_dir: Path, out_dir: Path):
         self.data_dir = Path(data_dir)
         self.out_dir = Path(out_dir)
+        self.hashes = HashCache(self.out_dir / ".cache" / "hashes.json")  # 홈 화면이 열릴 때마다 모든 파일을 다시 해시하지 않게
 
     # ---- 경로 ----
     @staticmethod
@@ -147,7 +149,7 @@ class TripService:
         for raw_name, content in files:  # 전부 검증한 뒤에 저장한다(일부만 저장되는 일 방지)
             name = _name(Path(nfc(raw_name).replace("\\", "/")).name)
             if Path(name).suffix.lower() not in SUPPORTED:
-                raise ValueError(f"{name}: 지원하지 않는 확장자예요(jpg·jpeg·png·pdf)")
+                raise ValueError(f"{name}: 지원하지 않는 확장자예요(jpg·png·pdf·heic)")
             if len(content) > MAX_UPLOAD_BYTES:
                 raise ValueError(f"{name}: 파일이 30MB를 넘어요")
             prepared.append((name, content))
@@ -230,7 +232,7 @@ class TripService:
         """VLM 추출값과 다른 필드만 overrides.yaml에 남긴다. clear_warnings=None이면 기존 해제 목록을 건드리지 않는다."""
         base = {r.receipt_id: r for r in self.extracted(traveler, trip_id)}
         if receipt_id not in base:
-            raise KeyError(receipt_id)
+            raise NotFound(f"영수증 {receipt_id}")
         orig = base[receipt_id]
         path = self.trip_dir(traveler, trip_id) / "overrides.yaml"
         data = _yaml_load(path)
@@ -282,9 +284,16 @@ class TripService:
             raise FileNotFoundError(image_id)
         return p
 
-    def cached_law(self, today: date) -> LawSnapshot | None:
-        p = self.out_dir / ".cache" / "law" / f"{today.isoformat()}.json"
-        return load_snapshot(p) if p.exists() else None
+    def law_book(self, today: date) -> LawBook | None:
+        """오늘 조회했거나(실패 시 저장해 둔 규정) 방금 조회에 실패한 기록이 있으면 규정 묶음, 조회가 필요하면 None."""
+        return load_law_book(self.out_dir / ".cache", today)
+
+    def law_notices(self, today: date) -> list[str]:
+        book = peek_law_book(self.out_dir / ".cache")
+        return book.notices(today) if book else []
+
+    def file_owners(self) -> dict[str, set[str]]:
+        return trip_file_owners(self.data_dir, self.hashes)
 
     # ---- 상태·버전 ----
     def trip_status(self, traveler: str, trip_id: str) -> TripSummary:
@@ -297,7 +306,7 @@ class TripService:
         manifest = out / "work" / "manifest.json"
         if extracted and manifest.exists():
             known = {m["sha256"] for m in json.loads(manifest.read_text(encoding="utf-8"))}
-            stale = {sha256_file(p) for p in files} != known
+            stale = {self.hashes.sha256(p) for p in files} != known
         version = claimed = approved = review_count = verify_ok = None
         documented = False
         latest = read_latest(out) if out.exists() else None
@@ -345,6 +354,7 @@ class TripService:
                     found.append(self.trip_status(traveler, _name(trip.name)))
                 except InvalidName:
                     continue
+        self.hashes.flush()
         return found
 
     def versions(self, traveler: str, trip_id: str) -> list[VersionInfo]:

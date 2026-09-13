@@ -30,3 +30,9 @@ def test_diff_markdown_lists_added_and_totals(trip, law_snapshot, tmp_path):
     assert "# 변경 내역 v1 → v2" in md and "숙박비(stay)" in md and "인정 196,400 → 296,400" in md and "## 삭제\n- 없음" in md
     (tmp_path / "d.json").write_text(json.dumps([d.model_dump(mode="json") for d in v2]), encoding="utf-8")
     assert load_decisions(tmp_path / "d.json") == v2 and load_decisions(tmp_path / "none.json") == []
+
+def test_fingerprint_includes_report_version(trip, law_snapshot, monkeypatch):
+    import receipt_evidence.versioning as v
+    fp = fingerprint(GOLD, trip, law_snapshot)
+    monkeypatch.setattr(v, "REPORT_VERSION", "changed")
+    assert fingerprint(GOLD, trip, law_snapshot) != fp  # 서식을 고치면 같은 입력이라도 새 버전 문서를 만든다

@@ -1,23 +1,28 @@
 """작업 스레드에서 실행하는 본문. VLM은 필요할 때만 켜고, 작업이 끝나면(성공·실패 모두) 이 앱이 켠 서버를 끈다."""
 from __future__ import annotations
-import os
+import logging, os
 from datetime import date
 from pathlib import Path
-from ..law import get_law_snapshot
+from ..law import get_law_book
 from ..models import PipelineResult
 from ..pipeline import Clients, extract_trip, run_batch
 from .vlm_process import VlmManager
+
+log = logging.getLogger("receipt_evidence.web")
 
 def do_extract(settings, clients: Clients, vlm: VlmManager, traveler: str, trip_id: str) -> int:
     try:
         work = extract_trip(settings.data_dir, settings.out_dir, clients, traveler, trip_id, on_vlm_needed=vlm.ensure_ready)
     finally:
         vlm.stop()
-    get_law_snapshot(clients.law, settings.out_dir / ".cache", date.today())  # 판정 화면이 바로 열리도록 법령 일자 캐시 예열
+    try:  # 판정 화면이 바로 열리도록 규정을 미리 확보한다. 실패해도 영수증 읽기는 성공으로 둔다
+        get_law_book(clients.law, settings.out_dir / ".cache", date.today())
+    except Exception:
+        log.exception("규정 미리 받기 실패")
     return len(work.receipts)
 
 def do_warm_law(settings, clients: Clients) -> str:
-    return get_law_snapshot(clients.law, settings.out_dir / ".cache", date.today()).mst
+    return get_law_book(clients.law, settings.out_dir / ".cache", date.today()).current.mst
 
 def do_finalize(settings, clients: Clients, vlm: VlmManager, traveler: str, trip_id: str) -> PipelineResult:
     try:

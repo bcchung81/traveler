@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · 여비정산 증빙{% endblock %}
+{% block content %}
+<section class="panel" role="alert">
+  <span class="sticker">잠깐!</span>
+  <h1 class="title" style="margin-top:8px">{{ title }}</h1>
+  <div class="hint" style="font-size:15px">{{ message }}</div>
+  <div class="row"><a class="btn btn--yellow" href="{{ back }}">이전 화면으로</a>{% if back != "/" %}<a class="btn" href="/">홈으로</a>{% endif %}</div>
+</section>
+{% endblock %}

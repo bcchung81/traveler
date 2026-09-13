@@ -8,12 +8,29 @@ uv sync
 ```
 필요: llama.cpp(`llama-server`), Qwen3-VL GGUF(`scripts/start_vlm.sh` 경로), Node.js(`npx`로 kordoc·korean-law-mcp 실행).
 
+## 인터넷 없이 쓰기
+인터넷이 될 때 한 번 준비해 두면 이후에는 오프라인으로 끝까지 정산할 수 있습니다.
+```bash
+uv run receipt-evidence prepare      # 최신 여비 규정 조회 · MCP 패키지(korean-law-mcp·kordoc) 내려받기 · 로컬 AI 확인
+```
+| 구성 | 인터넷 | 없을 때 |
+|---|---|---|
+| 영수증 읽기(llama-server·Qwen3-VL) | 불필요 | — |
+| HWPX 생성·검증(kordoc) | 준비 후 불필요 | `npx --prefer-offline`으로 받아 둔 패키지 사용(버전 고정) |
+| 여비 규정(korean-law-mcp) | 조회에 필요 | 받아 둔 가장 최근 규정으로 판정하고 결과·서류에 안내를 남김. 없으면 저장소 기준본(2026. 7. 1. 시행, MST 287535) |
+| 웹 글꼴 | 불필요 | 저장소에 동봉 |
+
+- 규정은 하루 한 번 현행본을 조회합니다. 조회에 실패하면 10분 동안은 다시 조회하지 않고 저장해 둔 규정을 씁니다(`--refresh-law`로 즉시 재조회).
+- 받은 규정은 버전(MST)별로 `out/.cache/law/snapshots/`에 쌓이고, 출장 시작일에 시행되던 규정으로 판정합니다. 그 규정이 없으면 현행 규정으로 판정하고 안내만 붙입니다.
+- 개정이 감지되면(`out/.cache/law/amendments.json`) 홈·판정 화면과 요약에 알립니다. 근무지 내 출장 금액·추가지급 한도 등은 조문 본문에서 읽고, 문구가 바뀌어 못 읽으면 해당 항목을 확인필요로 둡니다.
+- 환경변수: `KOREAN_LAW_MCP`(기본 `korean-law-mcp@4.13.0`), `KORDOC_MCP`(기본 `kordoc@4.13.1`), `LAW_OC`(국가법령정보 OC).
+
 ## 영수증 넣기
 ```
 data/<출장자>/traveler.yaml                 여비 구분·근무지·결재선 (examples/traveler.yaml)
 data/<출장자>/<YYYY-MM-DD_출장지>/trip.yaml   출장기간·출장지·목적 (없으면 자동 제안)
 data/<출장자>/<YYYY-MM-DD_출장지>/overrides.yaml  사용자 확인값 (선택)
-data/<출장자>/<YYYY-MM-DD_출장지>/*.jpg|png|pdf  영수증
+data/<출장자>/<YYYY-MM-DD_출장지>/*.jpg|png|pdf|heic  영수증
 ```
 위 구조(`data/<출장자>/<출장>/`)로 넣어야 처리됩니다.
 

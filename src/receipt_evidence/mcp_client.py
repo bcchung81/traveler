@@ -1,6 +1,6 @@
 # src/receipt_evidence/mcp_client.py
 from __future__ import annotations
-import asyncio, threading
+import asyncio, os, threading
 from dataclasses import dataclass, field
 from typing import Callable, Protocol
 from mcp import ClientSession, StdioServerParameters, types
@@ -26,13 +26,17 @@ async def _call_all(session: ClientSession, calls: list[tuple[str, dict]]) -> li
     return out
 
 class StdioToolCaller:
-    """`with` 밖: 호출마다 서버를 띄우는 1회성 세션. `with` 안: 백그라운드 스레드의 이벤트 루프에서 세션 1개를 재사용."""
+    """`with` 밖: 호출마다 서버를 띄우는 1회성 세션. `with` 안: 백그라운드 스레드의 이벤트 루프에서 세션 1개를 재사용.
+    lazy=True면 `with`에 들어갈 때가 아니라 첫 호출 때 서버를 띄운다(쓰지 않는 작업이 서버 기동 실패에 묶이지 않게)."""
 
-    def __init__(self, command: str, args: list[str], env: dict[str, str] | None = None, timeout: float = 600.0):
+    def __init__(self, command: str, args: list[str], env: dict[str, str] | None = None, timeout: float = 600.0, lazy: bool = False):
         self.command = command
         self.args = list(args)
         self.env = env
         self.timeout = timeout
+        self.lazy = lazy
+        self._managed = False
+        self._start_lock = threading.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._queue: asyncio.Queue | None = None
         self._thread: threading.Thread | None = None
@@ -43,7 +47,11 @@ class StdioToolCaller:
 
     def call_many(self, calls: list[tuple[str, dict]]) -> list[McpResult]:
         if self._loop is None:
-            return asyncio.run(self._oneshot(calls))
+            if not (self._managed and self.lazy):
+                return asyncio.run(self._oneshot(calls))
+            with self._start_lock:
+                if self._loop is None:
+                    self._start()
         return asyncio.run_coroutine_threadsafe(self._submit(calls), self._loop).result(timeout=self.timeout)
 
     async def _oneshot(self, calls: list[tuple[str, dict]]) -> list[McpResult]:
@@ -84,6 +92,18 @@ class StdioToolCaller:
             ready.set()
 
     def __enter__(self) -> "StdioToolCaller":
+        self._managed = True
+        if not self.lazy:
+            self._start()
+        return self
+
+    def ensure_started(self) -> None:
+        """`with` 안에서 서버를 미리 띄운다(패키지 내려받기·기동 확인용)."""
+        with self._start_lock:
+            if self._loop is None:
+                self._start()
+
+    def _start(self) -> None:
         holder: dict = {}
         ready = threading.Event()
         self._error = None
@@ -95,7 +115,6 @@ class StdioToolCaller:
             self._thread = None
             raise RuntimeError(f"MCP 서버 시작 실패({self.command} {' '.join(self.args)}): {self._error}")
         self._loop, self._queue = holder["loop"], holder["queue"]
-        return self
 
     def __exit__(self, *exc) -> None:
         if self._loop is not None and self._thread is not None:
@@ -107,12 +126,18 @@ class StdioToolCaller:
         self._loop = None
         self._queue = None
         self._thread = None
+        self._managed = False
+
+# 버전을 고정해 결과를 재현하고, --prefer-offline으로 받아 둔 패키지를 먼저 쓴다(인터넷이 없어도 기동). 환경변수로 바꿀 수 있다.
+KOREAN_LAW_MCP = "korean-law-mcp@4.13.0"
+KORDOC_MCP = "kordoc@4.13.1"
 
 def law_caller() -> StdioToolCaller:
-    return StdioToolCaller("npx", ["-y", "korean-law-mcp"], {"LAW_OC": "kca-api"})
+    return StdioToolCaller("npx", ["-y", "--prefer-offline", os.environ.get("KOREAN_LAW_MCP", KOREAN_LAW_MCP)],
+                           {"LAW_OC": os.environ.get("LAW_OC", "kca-api")}, lazy=True)
 
 def kordoc_caller() -> StdioToolCaller:
-    return StdioToolCaller("npx", ["-y", "kordoc", "mcp"], None)
+    return StdioToolCaller("npx", ["-y", "--prefer-offline", os.environ.get("KORDOC_MCP", KORDOC_MCP), "mcp"], None, lazy=True)
 
 @dataclass
 class FakeToolCaller:
@@ -121,6 +146,9 @@ class FakeToolCaller:
 
     def __enter__(self) -> "FakeToolCaller":
         return self
+
+    def ensure_started(self) -> None:
+        return None
 
     def __exit__(self, *exc) -> None:
         return None
