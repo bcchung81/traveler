@@ -81,20 +81,33 @@
         {{ text_field("business_no", "사업자등록번호", selected.business_no) }}
         {{ text_field("paid_at", "결제일시", selected.paid_at.strftime('%Y-%m-%d %H:%M') if selected.paid_at else none) }}
       </div>
+      {% set cat = selected.category.value %}
+      {% if cat == "숙박" %}
       <div class="grid2">
-        {{ text_field("service_date", "운행일·체크인", selected.service_date, type="date") }}
+        {{ text_field("service_date", "체크인", selected.service_date, type="date") }}
         {{ text_field("service_end_date", "체크아웃", selected.service_end_date, type="date") }}
       </div>
+      <div class="grid2">
+        {{ text_field("region", "숙박 지역", selected.region) }}
+        {{ text_field("nights", "박수", selected.nights) }}
+      </div>
+      {% elif cat in ("철도", "버스", "항공") %}
+      {{ text_field("service_date", "운행일", selected.service_date, type="date") }}
       <div class="grid2">
         {{ text_field("origin", "출발", selected.origin) }}
         {{ text_field("destination", "도착", selected.destination) }}
       </div>
-      <div class="grid3">
+      <div class="grid2">
         {{ text_field("train_no", "열차·편명", selected.train_no) }}
         {{ text_field("seat_class", "좌석", selected.seat_class) }}
-        {{ text_field("nights", "박수", selected.nights) }}
       </div>
-      {{ text_field("region", "숙박 지역", selected.region) }}
+      {% else %}
+      <div class="grid2">
+        {{ text_field("service_date", "이용일", selected.service_date, type="date") }}
+        {{ text_field("region", "지역", selected.region) }}
+      </div>
+      {% endif %}
+      <div class="hint">구분을 바꿨다면 먼저 저장하면 그 구분에 맞는 칸이 보여요.</div>
       {% if selected.warnings or cleared %}
       <div class="field">
         <span class="label">검증 경고 <span class="hint">· 원본을 확인했으면 체크해서 해제해요</span></span>

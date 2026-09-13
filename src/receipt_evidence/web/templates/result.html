@@ -62,12 +62,13 @@
 
       <section class="panel">
         <h2 class="title title--sm">문서에 들어간 내용</h2>
+        {% set tick %}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#08080C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M20 6L9 17l-5-5"></path></svg>{% endset %}
         <div class="stack" style="font-size:15px;font-weight:600">
-          <div>✔︎ 출장 개요</div>
-          <div>✔︎ 지급대상 요약 · 영수증별 상세 {{ result.decisions|length }}행</div>
-          <div>✔︎ 적용 규정 · 공무원 여비 규정({{ result.law_effective|kdate }} 시행)</div>
-          <div>✔︎ 확인필요 사항 {{ result.review_items|length }}건</div>
-          <div>✔︎ 붙임 영수증 {{ result.receipts|length }}건</div>
+          <div class="row" style="flex-wrap:nowrap">{{ tick }}<span>출장 개요</span></div>
+          <div class="row" style="flex-wrap:nowrap">{{ tick }}<span>지급대상 요약 · 영수증별 상세 {{ result.decisions|length }}행</span></div>
+          <div class="row" style="flex-wrap:nowrap">{{ tick }}<span>적용 규정 · 공무원 여비 규정({{ result.law_effective|kdate }} 시행)</span></div>
+          <div class="row" style="flex-wrap:nowrap">{{ tick }}<span>확인필요 사항 {{ result.review_items|length }}건</span></div>
+          <div class="row" style="flex-wrap:nowrap">{{ tick }}<span>붙임 영수증 {{ result.receipts|length }}건</span></div>
         </div>
       </section>
 

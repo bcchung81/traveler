@@ -646,6 +646,14 @@ def test_run_uses_on_demand_vlm_and_stops(monkeypatch):
 
 ---
 
+## 실행 중 변경 기록 (2026-09-13 구현)
+- VLM 서버: 사용자 요청("llama 서버는 필요할때만 올려")으로 '시작 버튼'안 대신 필요할 때만 자동으로 켜고 끝나면 끄도록 바꿈. `VlmManager.ensure_ready/stop`, `run_batch·extract_trip(on_vlm_needed=)`, CLI `run`도 동일. 웹 E2E에서 추출 후·종료 후 `/health` 무응답을 확인.
+- `save_override(clear_warnings=None)`: 판정 화면의 짧은 폼이 기존 경고 해제 목록을 지우지 않도록 None이면 유지.
+- 문서 최신 여부(`documented`): `receipts.extracted.json` mtime은 비교에서 제외(재실행마다 갱신됨). 입력이 같아 새 버전이 없을 때는 `do_finalize`가 `result.json`의 시각을 갱신.
+- 테스트 정리: `FakeProc`은 `tests/helpers.py`로 이동(패키지 경로 import 문제). 경로 검사 테스트는 라우트가 생기는 Task 21로 이동. Task 20의 같은 출처 POST 검사는 `!= 403`. TripService 테스트는 6개.
+- 화면 확인(헤드리스 Chrome, 실제 데이터): 철도 영수증에 VLM이 회사 주소를 '숙박 지역'으로 읽어 보여 준 문제 → 2화면이 구분별 칸만 표시(숙박: 체크인·체크아웃·지역·박수 / 철도·버스·항공: 운행일·출발·도착·편명·좌석). 4화면 체크 표시는 SVG 아이콘.
+- 기본 포트 8765는 같은 컴퓨터의 다른 데모 앱(`tep web`)과 겹칠 수 있음 → 겹치면 `--port`로 바꿔 실행.
+
 ## 자체 점검
 - spec 목표 1~5 ↔ Task 21(1)·22(2)·23(3)·24(4)·20/24(5). 보안 ↔ Task 18(경로·업로드)·20(Host·Origin)·24(CSP)·25(루프백). 오류 처리 표 ↔ Task 21(파일 없음)·22(VLM 꺼짐·stale)·23(법령 캐시)·24(문서 실패·미리보기 실패).
 - 이름 일관성: `TripService` 메서드명(18)을 라우트(21~24)와 테스트가 같은 이름으로 사용. `do_extract/do_warm_law/do_finalize`(20)를 21·23·24에서 사용. helpers의 `law_from/doc_fake/rail/png_bytes/new_trip/NEW_TRIP_FORM`(17·21).

@@ -13,6 +13,7 @@ def test_finalize_result_preview_download_versions_and_home(web):
     text = unquote(page.text)
     assert page.status_code == 200 and "서류가 완성됐어요" in text and "148,200" in text and "v1" in text
     assert f"{BASE}/v/1/preview" in text and "합계를 다시 읽어 맞춰 봤어요" in text and f"{BASE}/v/1/evidence.hwpx" in text
+    assert "✔" not in text and "붙임 영수증 1건" in text
     d = web.get(f"{BASE}/v/1/evidence.hwpx")
     assert d.status_code == 200 and d.content == b"PK" and "attachment" in d.headers["content-disposition"]
     p = web.get(f"{BASE}/v/1/preview")
