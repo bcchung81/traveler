@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% from "_steps.html" import steps %}
+{% block title %}읽은 값 확인 · 여비정산 증빙{% endblock %}
+{% block meta %}{{ status.traveler }} · {{ status.trip_id }}{% endblock %}
+{% block cta %}
+{% if receipts and not (job and job.active) %}
+<a class="cta" href="{{ base }}/review">맞아요, 규정 확인하기 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></a>
+{% endif %}
+{% endblock %}
+{% block content %}
+{{ steps(base, 2, done=done, subs={2: ("영수증을 읽는 중이에요" if job and job.active else ("읽은 값이 맞나요?" if receipts else "아직 읽지 않았어요"))}) }}
+
+{% if job and job.active %}
+  {% include "_job.html" %}
+{% else %}
+  {% if job and job.state == "error" %}
+  <section class="panel" role="alert">
+    <span class="sticker">읽지 못했어요</span>
+    <h2 class="title" style="margin-top:8px">영수증을 읽는 중에 문제가 생겼어요</h2>
+    <div class="hint" style="font-size:15px">{{ job.message }}</div>
+    <form method="post" action="{{ base }}/extract"><button class="btn btn--yellow" type="submit">다시 읽기</button></form>
+  </section>
+  {% endif %}
+  {% if status.stale %}
+  <div class="banner">파일이 바뀌었어요 — 새로 올린 영수증도 읽어야 해요.
+    <form method="post" action="{{ base }}/extract"><button class="btn btn--small" type="submit">다시 읽기</button></form>
+  </div>
+  {% endif %}
+
+  {% if receipts %}
+  <div class="layout-extract">
+    <section class="panel">
+      <h2 class="title title--sm">읽은 영수증 {{ receipts|length }}건</h2>
+      <div class="stack">
+      {% for r in receipts %}
+        {% set blocking = r.warnings|select("in", blocking_codes)|list %}
+        {% set missing = r.warnings|reject("in", blocking_codes)|list %}
+        <a class="receipt-item {% if r.receipt_id == selected.receipt_id %}is-active{% endif %}" href="{{ base }}/extract?rid={{ r.receipt_id|urlencode }}">
+          <span class="row row--between">
+            <span style="font-weight:800;font-size:15px">{{ r.train_no or r.merchant or r.category.value }}</span>
+            {% if blocking %}<span class="chip chip--review">확인 필요</span>{% elif missing %}<span class="chip chip--reduced">빈칸 있음</span>{% else %}<span class="chip chip--pay">검증 통과</span>{% endif %}
+          </span>
+          <span class="hint">{{ r.category.value }}{% if r.origin %} · {{ r.origin }} → {{ r.destination }}{% endif %} · {{ r.amount|won }}원</span>
+        </a>
+      {% endfor %}
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="row row--between"><h2 class="title title--sm">원본</h2><span class="hint">{{ images|length }}쪽</span></div>
+      <div class="original">
+        {% for image_id in images %}
+        <img src="{{ base }}/image/{{ image_id }}" alt="영수증 원본 {{ loop.index }}쪽">
+        {% else %}
+        <div class="hint">원본 이미지를 찾지 못했어요</div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <form method="post" action="{{ base }}/receipts/{{ selected.receipt_id|urlencode }}" class="panel">
+      <input type="hidden" name="clear_warnings_present" value="1">
+      <div class="row row--between"><h2 class="title title--sm">AI가 읽은 값</h2><span class="hint">틀리면 고쳐서 저장해요</span></div>
+      <div class="field">
+        <label for="category">구분{% if "category" in overridden %} <span class="chip chip--reduced">수정함</span>{% endif %}</label>
+        <select class="select" id="category" name="category">
+          {% for c in categories %}<option value="{{ c }}" {% if c == selected.category.value %}selected{% endif %}>{{ c }}</option>{% endfor %}
+        </select>
+      </div>
+      {% macro text_field(name, label, value, type="text", cls="input") %}
+      <div class="field">
+        <label for="{{ name }}">{{ label }}{% if name in overridden %} <span class="chip chip--reduced">수정함</span>{% endif %}</label>
+        <input class="{{ cls }}" id="{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ '' if value is none else value }}">
+      </div>
+      {% endmacro %}
+      {{ text_field("merchant", "가맹점", selected.merchant) }}
+      <div class="grid2">
+        {{ text_field("amount", "결제금액(원)", selected.amount, cls="input input--num") }}
+        {{ text_field("approval_no", "승인번호", selected.approval_no) }}
+      </div>
+      <div class="grid2">
+        {{ text_field("business_no", "사업자등록번호", selected.business_no) }}
+        {{ text_field("paid_at", "결제일시", selected.paid_at.strftime('%Y-%m-%d %H:%M') if selected.paid_at else none) }}
+      </div>
+      <div class="grid2">
+        {{ text_field("service_date", "운행일·체크인", selected.service_date, type="date") }}
+        {{ text_field("service_end_date", "체크아웃", selected.service_end_date, type="date") }}
+      </div>
+      <div class="grid2">
+        {{ text_field("origin", "출발", selected.origin) }}
+        {{ text_field("destination", "도착", selected.destination) }}
+      </div>
+      <div class="grid3">
+        {{ text_field("train_no", "열차·편명", selected.train_no) }}
+        {{ text_field("seat_class", "좌석", selected.seat_class) }}
+        {{ text_field("nights", "박수", selected.nights) }}
+      </div>
+      {{ text_field("region", "숙박 지역", selected.region) }}
+      {% if selected.warnings or cleared %}
+      <div class="field">
+        <span class="label">검증 경고 <span class="hint">· 원본을 확인했으면 체크해서 해제해요</span></span>
+        <div class="warn-list">
+          {% for code in selected.warnings %}
+          <label class="checkline"><input type="checkbox" name="clear_warnings" value="{{ code }}"> {{ warning_text.get(code, code) }} <span class="hint">{{ code }}</span></label>
+          {% endfor %}
+          {% for code in cleared %}
+          <label class="checkline"><input type="checkbox" name="clear_warnings" value="{{ code }}" checked> {{ warning_text.get(code, code) }} <span class="hint">{{ code }} · 해제함</span></label>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      <button class="btn btn--yellow" type="submit">고친 값 저장</button>
+      <div class="hint">카드번호는 가린 채로만 저장하고, 문서에는 넣지 않아요.</div>
+    </form>
+  </div>
+  {% endif %}
+{% endif %}
+{% endblock %}

@@ -27,6 +27,13 @@ def done_steps(status: TripSummary | None) -> tuple[int, ...]:
         done += [3, 4]
     return tuple(done)
 
+def existing_trip(service, traveler: str, trip_id: str) -> TripSummary:
+    """이름을 검증하고(잘못되면 400) 출장 폴더가 없으면 404."""
+    status = service.trip_status(traveler, trip_id)
+    if not service.trip_dir(status.traveler, status.trip_id).is_dir():
+        raise FileNotFoundError(f"{status.traveler}/{status.trip_id}")
+    return status
+
 async def _uploads(form) -> list[tuple[str, bytes]]:
     return [(f.filename, await f.read()) for f in form.getlist("files") if isinstance(f, UploadFile) and f.filename]
 
@@ -40,11 +47,7 @@ def register(app: FastAPI, settings, deps, render, trip_base, see_other) -> None
         with deps.clients() as clients:
             return fn(clients)
 
-    def existing(traveler: str, trip_id: str) -> TripSummary:
-        status = service.trip_status(traveler, trip_id)
-        if not service.trip_dir(status.traveler, status.trip_id).is_dir():
-            raise FileNotFoundError(f"{status.traveler}/{status.trip_id}")
-        return status
+    existing = lambda traveler, trip_id: existing_trip(service, traveler, trip_id)
 
     # ---- 새 정산 ----
     @app.get("/new", response_class=HTMLResponse)
@@ -108,3 +111,72 @@ def register(app: FastAPI, settings, deps, render, trip_base, see_other) -> None
         jobs.submit(job_key(t, trip), "extract",
                     lambda: run_with_clients(lambda c: actions.do_extract(settings, c, deps.vlm, t, trip)))
         return see_other(f"{base}/extract")
+
+# ---- 2 읽은 값 확인 ----
+JOB_TEXT = {
+    "extract": ("영수증을 읽는 중이에요", "새 영수증이 있으면 로컬 AI를 켜서 읽고, 다 읽으면 꺼요. 한 장에 20~40초쯤 걸려요."),
+    "law": ("여비 규정을 찾는 중이에요", "공무원 여비 규정 현행본을 조회해요. 하루에 한 번만 조회해요."),
+    "finalize": ("HWPX 서류를 만드는 중이에요", "판정 결과로 증빙내역서를 만들고, 다시 읽어 합계를 맞춰 봐요."),
+}
+
+def register_extract(app: FastAPI, settings, deps, render, trip_base, see_other) -> None:
+    from urllib.parse import quote
+    from fastapi.responses import FileResponse
+    from ..models import Category
+    from ..rules import CROSS_CODES, WARNING_TEXT
+    from ..validate import ERROR_CODES
+    from ..workspace import load_overrides
+    from .service import EDITABLE_RECEIPT_FIELDS
+    service, jobs = deps.service, deps.jobs
+
+    existing = lambda traveler, trip_id: existing_trip(service, traveler, trip_id)
+
+    def job_ctx(job):
+        title, hint = JOB_TEXT.get(job.kind, ("작업 중이에요", "")) if job else ("", "")
+        return {"job": job, "job_title": title, "job_hint": hint}
+
+    @app.get("/t/{traveler}/{trip_id}/extract", response_class=HTMLResponse)
+    def extract_page(request: Request, traveler: str, trip_id: str, rid: str = ""):
+        status = existing(traveler, trip_id)
+        t, trip = status.traveler, status.trip_id
+        base = trip_base(t, trip)
+        job = jobs.get(job_key(t, trip))
+        receipts = service.receipts(t, trip)
+        failed = job is not None and job.state == "error" and job.kind == "extract"
+        if not receipts and not failed and not (job and job.active):
+            return see_other(f"{base}/upload")
+        ctx = dict(base=base, status=status, done=done_steps(status), receipts=receipts, **job_ctx(job))
+        if receipts:
+            selected = next((r for r in receipts if r.receipt_id == rid), receipts[0])
+            override = load_overrides(service.trip_dir(t, trip)).get(selected.receipt_id, {})
+            ctx.update(selected=selected, images=service.images_for(t, trip).get(selected.receipt_id, []),
+                       overridden={k for k in override if k != "clear_warnings"}, cleared=list(override.get("clear_warnings", [])),
+                       categories=[c.value for c in Category], warning_text=WARNING_TEXT, blocking_codes=sorted(ERROR_CODES | CROSS_CODES))
+        return render(request, "extract.html", **ctx)
+
+    @app.get("/t/{traveler}/{trip_id}/job", response_class=HTMLResponse)
+    def job_status(request: Request, traveler: str, trip_id: str):
+        status = existing(traveler, trip_id)
+        job = jobs.get(job_key(status.traveler, status.trip_id))
+        if job is not None and job.active:
+            return render(request, "_job.html", base=trip_base(status.traveler, status.trip_id), **job_ctx(job))
+        return HTMLResponse("", headers={"HX-Refresh": "true"})  # 끝났으면 화면 전체를 새로 그린다
+
+    @app.post("/t/{traveler}/{trip_id}/receipts/{rid}")
+    async def save_receipt(request: Request, traveler: str, trip_id: str, rid: str):
+        status = existing(traveler, trip_id)
+        t, trip = status.traveler, status.trip_id
+        form = await request.form()
+        fields = {k: str(form[k]) for k in EDITABLE_RECEIPT_FIELDS if k in form}
+        clear = [str(v) for v in form.getlist("clear_warnings")] if ("clear_warnings" in form or "clear_warnings_present" in form) else None
+        service.save_override(t, trip, rid, fields, clear)
+        base = trip_base(t, trip)
+        if form.get("next") == "review":
+            return see_other(f"{base}/review")
+        return see_other(f"{base}/extract?rid={quote(rid, safe='')}")
+
+    @app.get("/t/{traveler}/{trip_id}/image/{image_id}")
+    def receipt_image(traveler: str, trip_id: str, image_id: str):
+        status = existing(traveler, trip_id)
+        return FileResponse(service.image_path(status.traveler, status.trip_id, image_id), media_type="image/png",
+                            headers={"Cache-Control": "private, max-age=600"})
