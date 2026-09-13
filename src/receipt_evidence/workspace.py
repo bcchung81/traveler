@@ -353,7 +353,7 @@ def apply_overrides(receipts: list[Receipt], overrides: dict[str, dict]) -> list
         if not o:
             out.append(r)
             continue
-        fields = {k: v for k, v in o.items() if k not in ("warnings", "clear_warnings", "receipt_id", "image_id", "sha256")}
+        fields = {k: v for k, v in o.items() if k not in ("warnings", "clear_warnings", "decision", "receipt_id", "image_id", "sha256")}
         merged = r.model_dump() | fields
         merged["raw"] = r.raw | {"overrides": o}
         new = Receipt.model_validate(merged)

@@ -31,3 +31,16 @@ def test_sorting_version_and_proposed_notice(trip, law_snapshot):
     detail = md[md.index("## 영수증별 상세"):]
     assert detail.index("| 7.9. |") < detail.index("| 7.10. |") < detail.index("| 정액 |")  # 상세표 일자는 짧게(연도는 개요에)
     assert "※ 출장 정보는 영수증으로 자동 제안한 값입니다(근거: 폴더명 날짜 2026-07-09)" in md and "| 문서 버전 | v2 |" in md
+
+def test_manual_decisions_section_and_over_rule_notice(trip, law_snapshot):
+    from receipt_evidence.rules import apply_manual_decisions
+    meal = Receipt(receipt_id="m", image_id="m", category="식사", amount=9000, service_date=date(2026, 7, 9))
+    ds = apply_manual_decisions(decide_all(GOLD + [meal], trip, law_snapshot),
+                                {"stay": {"decision": {"verdict": "지급", "reason": "체크인 확인"}}, "m": {"decision": {"verdict": "지급", "reason": "예외 승인"}}})
+    md = build_markdown(trip, law_snapshot, GOLD + [meal], ds, {})
+    assert "## 담당자 판정 내역" in md and "- 숙박비(stay): 규정상 확인필요 0 → 지급 100,000 · 사유: 체크인 확인" in md
+    assert "[규정 한도 초과 인정]" in md and "※ 규정 한도를 넘어 인정한 항목 1건(담당자 판정 내역 참조)" in md
+    detail = md[md.index("## 영수증별 상세"):md.index("## 적용 규정")]
+    assert "담당자 판정, " in detail
+    plain = build_markdown(trip, law_snapshot, GOLD, decide_all(GOLD, trip, law_snapshot), {})
+    assert "담당자 판정" not in plain  # 담당자 판정이 없으면 서류는 그대로

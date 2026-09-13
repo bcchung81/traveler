@@ -125,6 +125,15 @@ class TripConfig(BaseModel):
 class Verdict(str, Enum):
     PAY = "지급"; REDUCED = "감액지급"; DENIED = "불인정"; REVIEW = "확인필요"
 
+class ManualDecision(BaseModel):
+    """담당자가 바꾼 판정과 원래 규정 판정(서류에서 추적용)."""
+    verdict: Verdict
+    approved_amount: int
+    reason: str
+    rule_verdict: Verdict
+    rule_approved: int
+    over_rule: bool = False  # 규정이 계산한 인정액보다 많이 인정함
+
 class Decision(BaseModel):
     receipt_id: str | None
     item: str
@@ -133,6 +142,7 @@ class Decision(BaseModel):
     verdict: Verdict
     basis: list[str] = Field(default_factory=list)
     reasons: list[str] = Field(default_factory=list)
+    manual: ManualDecision | None = None
 
 class PipelineResult(BaseModel):
     run_id: str

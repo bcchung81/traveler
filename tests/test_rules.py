@@ -141,3 +141,34 @@ def test_in_city_and_vehicle_amounts_come_from_articles(trip, law_snapshot):
     assert row.verdict is Verdict.REVIEW and "제18조" in row.reasons[0]
     half = allowance_rows(trip.model_copy(update={"official_vehicle": True}), blank)
     assert half[0].item == "일비" and half[0].verdict is Verdict.REVIEW and half[1].verdict is Verdict.PAY
+
+from receipt_evidence.rules import apply_manual_decisions
+
+def test_manual_decisions_override_rule_and_keep_trace(trip, law_snapshot):
+    over = _stay(amount=150000)  # 서울 상한 100,000 초과, 사유 없음 → 규정상 감액지급 100,000
+    meal = Receipt(receipt_id="m", image_id="m", category=Category.MEAL, amount=9000, service_date=date(2026, 7, 9))
+    ds = decide_all([GOLD[2], over, meal, GOLD[0]], trip, law_snapshot)
+    manual = {"stay": {"decision": {"verdict": "지급", "reason": "체크인 7/9 확인(결제 메일에 날짜 없음)"}},
+              "s": {"decision": {"verdict": "지급", "reason": "기관장 사전 승인"}},
+              "m": {"decision": {"verdict": "지급", "reason": "워크숍 식사 예외 승인"}},
+              "ktx1": {"decision": {"verdict": "감액지급", "approved_amount": 40000, "reason": "일반실 차액만"}}}
+    out = {d.receipt_id or d.item: d for d in apply_manual_decisions(ds, manual)}
+    stay = out["stay"]
+    assert stay.verdict is Verdict.PAY and stay.approved_amount == 100000 and stay.basis[0] == "담당자 판정"
+    assert stay.manual.rule_verdict is Verdict.REVIEW and stay.manual.rule_approved == 0 and not stay.manual.over_rule
+    assert "규정상 확인필요 0원" in stay.reasons[0] and "체크인 7/9" in stay.reasons[0]
+    assert out["s"].approved_amount == 150000 and out["s"].manual.over_rule and out["s"].manual.rule_approved == 100000
+    assert out["m"].verdict is Verdict.PAY and out["m"].manual.over_rule and out["m"].manual.rule_verdict is Verdict.DENIED
+    assert out["ktx1"].verdict is Verdict.REDUCED and out["ktx1"].approved_amount == 40000 and not out["ktx1"].manual.over_rule
+    assert out["일비"].manual is None and totals(list(out.values()))["review"] == 0
+
+def test_invalid_manual_decisions_keep_rule(trip, law_snapshot):
+    ds = decide_all([GOLD[0], GOLD[1], GOLD[2]], trip, law_snapshot)
+    bad = {"ktx1": {"decision": {"verdict": "감액지급", "approved_amount": 60000, "reason": "청구액보다 큼"}},
+           "ktx2": {"decision": {"verdict": "지급"}},
+           "stay": {"decision": {"verdict": "마음대로", "reason": "x"}},
+           "일비": {"decision": {"verdict": "불인정", "reason": "정액 행은 대상 아님"}}}
+    out = {d.receipt_id or d.item: d for d in apply_manual_decisions(ds, bad)}
+    for rid in ("ktx1", "ktx2", "stay"):
+        assert out[rid].manual is None and "담당자 판정 형식 오류" in out[rid].reasons[-1]
+    assert out["ktx1"].verdict is Verdict.PAY and out["stay"].verdict is Verdict.REVIEW and out["일비"].manual is None

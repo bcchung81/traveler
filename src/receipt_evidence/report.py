@@ -58,8 +58,12 @@ def build_markdown(trip: TripConfig, law: LawSnapshot, receipts: list[Receipt], 
     for d in ordered:
         grp[d.item][0] += d.claimed_amount; grp[d.item][1] += d.approved_amount
     rows = [[k, fmt_won(v[0]), fmt_won(v[1])] for k, v in grp.items()] + [["합계", fmt_won(t["claimed"]), fmt_won(t["approved"])]]
-    md += [md_table(["구분", "청구액", "인정액"], rows), "", f"※ 확인필요 항목 청구액 합계: {fmt_won(t['review'])}원 (인정액 미포함)", "",
-           "## 영수증별 상세"]
+    manual = [d for d in ordered if d.manual]
+    over = [d for d in manual if d.manual.over_rule]
+    md += [md_table(["구분", "청구액", "인정액"], rows), "", f"※ 확인필요 항목 청구액 합계: {fmt_won(t['review'])}원 (인정액 미포함)"]
+    if over:
+        md.append(f"※ 규정 한도를 넘어 인정한 항목 {len(over)}건(담당자 판정 내역 참조)")
+    md += ["", "## 영수증별 상세"]
     detail = []
     for i, d in enumerate(ordered, start=1):
         r = by_id.get(d.receipt_id or "")
@@ -81,6 +85,10 @@ def build_markdown(trip: TripConfig, law: LawSnapshot, receipts: list[Receipt], 
     md += ["", "## 확인필요 사항"]
     reviews = [d for d in ordered if d.verdict is Verdict.REVIEW]
     md += [f"- {d.item}({d.receipt_id or '정액'}): {'; '.join(d.reasons)}" for d in reviews] or ["- 없음"]
+    if manual:
+        md += ["", "## 담당자 판정 내역"]
+        md += [f"- {d.item}({d.receipt_id}): 규정상 {d.manual.rule_verdict.value} {fmt_won(d.manual.rule_approved)} → {d.verdict.value} {fmt_won(d.approved_amount)}"
+               f" · 사유: {d.manual.reason}" + (" [규정 한도 초과 인정]" if d.manual.over_rule else "") for d in manual]
     md += ["", "## 붙임"]
     for d in ordered:
         names = image_names.get(d.receipt_id or "", [])

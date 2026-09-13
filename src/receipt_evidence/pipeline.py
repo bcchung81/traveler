@@ -13,7 +13,7 @@ from .law import LawBook, get_law_book
 from .mcp_client import ToolCaller
 from .models import BatchResult, Decision, LawSnapshot, PipelineResult, Receipt, ReceiptImage, TripConfig
 from .report import build_markdown, fmt_won, md_table
-from .rules import apply_cross_checks, decide_all, mark_cross_trip_duplicates, review_items, totals
+from .rules import apply_cross_checks, apply_manual_decisions, decide_all, mark_cross_trip_duplicates, review_items, totals
 from .validate import validate_all
 from .versioning import diff_markdown, fingerprint, load_decisions, plan_version, write_latest
 from .vlm import VlmClient
@@ -91,8 +91,9 @@ def review_receipts(job: TripJob, receipts: list[Receipt], law: LawBook | LawSna
     if owners is not None:
         key = trip_key(job.traveler, job.trip_id)
         receipts = mark_cross_trip_duplicates({key: receipts}, owners)[key]
-    checked = clear_warnings(apply_cross_checks(receipts, trip), load_overrides(job.trip_dir))  # 해제한 경고는 교차검사 뒤 마지막에
-    decisions = decide_all(checked, trip, snap)
+    overrides = load_overrides(job.trip_dir)
+    checked = clear_warnings(apply_cross_checks(receipts, trip), overrides)  # 해제한 경고는 교차검사 뒤 마지막에
+    decisions = apply_manual_decisions(decide_all(checked, trip, snap), overrides)  # 담당자 판정은 규정 판정 위에
     return TripReview(trip, checked, decisions, totals(decisions), review_items(decisions, checked), snap, notes)
 
 def finalize_trip(work: TripWork, law: LawBook | LawSnapshot, clients: Clients, out_dir: Path, opts: RunOptions, run_id: str,
@@ -103,7 +104,7 @@ def finalize_trip(work: TripWork, law: LawBook | LawSnapshot, clients: Clients, 
     trip, receipts, decisions, t, law = review.trip, review.receipts, review.decisions, review.totals, review.law
     if trip.proposed:
         (work.work_dir / "trip.proposed.yaml").write_text(dump_trip_yaml(trip), encoding="utf-8")
-    fp = fingerprint(receipts, trip, law)
+    fp = fingerprint(receipts, trip, law, manual=[(d.receipt_id, d.verdict.value, d.approved_amount, d.manual.reason) for d in decisions if d.manual])
     version, create = plan_version(trip_out, fp, force=opts.new_version)
     vdir = trip_out / f"v{version}"
     common = dict(run_id=run_id, traveler=job.traveler, trip_id=job.trip_id, trip=trip, law_mst=law.mst, law_effective=law.effective,

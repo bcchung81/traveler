@@ -36,3 +36,9 @@ def test_fingerprint_includes_report_version(trip, law_snapshot, monkeypatch):
     fp = fingerprint(GOLD, trip, law_snapshot)
     monkeypatch.setattr(v, "REPORT_VERSION", "changed")
     assert fingerprint(GOLD, trip, law_snapshot) != fp  # 서식을 고치면 같은 입력이라도 새 버전 문서를 만든다
+
+def test_fingerprint_changes_only_when_manual_decisions_exist(trip, law_snapshot):
+    fp = fingerprint(GOLD, trip, law_snapshot)
+    assert fingerprint(GOLD, trip, law_snapshot, manual=[]) == fp
+    m1 = fingerprint(GOLD, trip, law_snapshot, manual=[("stay", "지급", 100000, "체크인 확인")])
+    assert m1 != fp and m1 != fingerprint(GOLD, trip, law_snapshot, manual=[("stay", "지급", 100000, "다른 사유")])

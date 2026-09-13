@@ -152,3 +152,20 @@ def test_concurrent_runs_are_rejected(tmp_path, law_fixture_text):
             run_batch(data, tmp_path / "out", clients)
         with pytest.raises(BusyError):
             extract_trip(data, tmp_path / "out", clients, "정백철", "2026-07-09_서울")
+
+def test_manual_decision_in_overrides_changes_totals_report_and_version(tmp_path, law_fixture_text):
+    data, d, specs = _one_trip(tmp_path)
+    color_png(d / "stay.png", (70, 80, 90))
+    specs[(70, 80, 90)] = spec("숙박", 100000, "68325420", merchant="(주)예시숙박", paid_at="2026-08-21 16:44")
+    clients = Clients(vlm=ColorVlm(specs), law=law_from(law_fixture_text), doc=doc_fake())
+    r1 = run_batch(data, tmp_path / "out", clients, run_id="m1", summary=False).results[0]
+    stay = next(r for r in r1.receipts if r.amount == 100000)
+    assert r1.totals["review"] == 100000 and any(stay.receipt_id in x for x in r1.review_items)
+    (d / "overrides.yaml").write_text(f"{stay.receipt_id}:\n  decision:\n    verdict: 지급\n    reason: 체크인 7/9 확인\n", encoding="utf-8")
+    r2 = run_batch(data, tmp_path / "out", clients, run_id="m2", summary=False).results[0]
+    assert r2.version == 2 and r2.totals["review"] == 0 and r2.totals["approved"] == r1.totals["approved"] + 100000
+    assert not any(stay.receipt_id in x for x in r2.review_items)
+    assert "## 담당자 판정 내역" in Path(r2.report_md_path).read_text(encoding="utf-8")
+    (d / "overrides.yaml").unlink()
+    r3 = run_batch(data, tmp_path / "out", clients, run_id="m3", summary=False).results[0]
+    assert r3.version == 3 and r3.totals == r1.totals

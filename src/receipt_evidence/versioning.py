@@ -9,7 +9,7 @@ from .rules import RULES_VERSION, totals
 _RECEIPT_FIELDS = {"receipt_id", "sha256", "category", "merchant", "business_no", "amount", "paid_at", "service_date", "service_end_date",
                    "origin", "destination", "seat_class", "train_no", "approval_no", "region", "nights", "warnings"}
 
-def fingerprint(receipts: list[Receipt], trip: TripConfig, law: LawSnapshot) -> str:
+def fingerprint(receipts: list[Receipt], trip: TripConfig, law: LawSnapshot, manual: list[tuple] | None = None) -> str:
     payload = {
         "receipts": sorted((r.model_dump(mode="json", include=_RECEIPT_FIELDS) for r in receipts), key=lambda d: d["receipt_id"]),
         "trip": trip.model_dump(mode="json"),
@@ -17,6 +17,8 @@ def fingerprint(receipts: list[Receipt], trip: TripConfig, law: LawSnapshot) -> 
         "rules": RULES_VERSION,
         "report": REPORT_VERSION,
     }
+    if manual:  # 담당자 판정이 있을 때만 넣어 기존 출장의 지문은 그대로 둔다
+        payload["manual"] = sorted([list(m) for m in manual], key=lambda m: str(m[0]))
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 
 def read_latest(trip_out: Path) -> dict | None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import unicodedata
 from collections.abc import Callable
 from datetime import date, timedelta
-from .models import Category, Decision, LawSnapshot, RateTable, Receipt, TripConfig, Verdict
+from .models import Category, Decision, LawSnapshot, ManualDecision, RateTable, Receipt, TripConfig, Verdict
 from .validate import ERROR_CODES
 
 RULES_VERSION = "r2"  # 판정 로직을 바꾸면 올린다 → fingerprint가 달라져 새 버전 문서가 생성됨
@@ -229,6 +229,50 @@ def mark_cross_trip_duplicates(receipts_by_trip: dict[str, list[Receipt]], owner
                 r = r.model_copy(update={"raw": r.raw | {"dup_across_trips": others}})
             marked.append(r)
         out[key] = marked
+    return out
+
+MANUAL_VERDICTS = {"지급": Verdict.PAY, "감액지급": Verdict.REDUCED, "불인정": Verdict.DENIED}
+
+def _manual_error(d: Decision, why: str) -> Decision:
+    return d.model_copy(update={"reasons": d.reasons + [f"담당자 판정 형식 오류({why}) — 규정 판정 유지"]})
+
+def apply_manual_decisions(decisions: list[Decision], overrides: dict[str, dict]) -> list[Decision]:
+    """overrides.yaml의 decision(담당자 판정)을 규정 판정 위에 적용한다. 영수증 행만 대상이고, 원래 판정은 manual에 남긴다.
+    지급=청구액 전액, 감액지급=0<금액<청구액, 불인정=0. 사유가 없거나 형식이 틀리면 규정 판정을 유지한다."""
+    out: list[Decision] = []
+    for d in decisions:
+        spec = (overrides.get(d.receipt_id) or {}).get("decision") if d.receipt_id else None
+        if not spec:
+            out.append(d)
+            continue
+        if not isinstance(spec, dict):
+            out.append(_manual_error(d, "형식"))
+            continue
+        verdict = MANUAL_VERDICTS.get(str(spec.get("verdict", "")).strip())
+        reason = str(spec.get("reason") or "").strip()
+        if verdict is None:
+            out.append(_manual_error(d, "판정은 지급·감액지급·불인정 중 하나"))
+            continue
+        if not reason:
+            out.append(_manual_error(d, "사유 없음"))
+            continue
+        if verdict is Verdict.PAY:
+            approved = d.claimed_amount
+        elif verdict is Verdict.DENIED:
+            approved = 0
+        else:
+            raw = spec.get("approved_amount")
+            digits = "".join(ch for ch in str(raw) if ch.isdigit()) if raw is not None else ""
+            approved = int(digits) if digits else -1
+            if not 0 < approved < d.claimed_amount:
+                out.append(_manual_error(d, f"감액 인정액은 0보다 크고 청구액 {d.claimed_amount:,}보다 작아야 함"))
+                continue
+        over = d.verdict is not Verdict.REVIEW and approved > d.approved_amount
+        manual = ManualDecision(verdict=verdict, approved_amount=approved, reason=reason, rule_verdict=d.verdict,
+                                rule_approved=d.approved_amount, over_rule=over)
+        reasons = [f"담당자 판정: {reason} (규정상 {d.verdict.value} {d.approved_amount:,}원)"] + (["규정 한도를 넘는 인정"] if over else []) + d.reasons
+        out.append(d.model_copy(update={"verdict": verdict, "approved_amount": approved, "basis": ["담당자 판정"] + d.basis,
+                                         "reasons": reasons, "manual": manual}))
     return out
 
 def totals(decisions: list[Decision]) -> dict[str, int]:
