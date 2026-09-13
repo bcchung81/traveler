@@ -4,3 +4,9 @@
   service_date: 2026-07-09
   region: 서울
   clear_warnings: [MISSING_BIZNO]
+# 담당자 판정(선택): 규정 판정 대신 인정·감액·불인정. 사유 필수, 원래 규정 판정은 서류에 함께 남는다
+0456efab7890-p1:
+  decision:
+    verdict: 감액지급        # 지급 | 감액지급 | 불인정
+    approved_amount: 80000   # 감액지급일 때만(0 < 금액 < 청구액)
+    reason: 1박분만 출장 일정과 겹쳐 인정

@@ -105,6 +105,9 @@
           {% else %}
           <a class="btn btn--small" href="{{ base }}/extract?rid={{ row.receipt.receipt_id|urlencode if row.receipt else '' }}">읽은 값·원본 확인</a>
           {% endif %}
+          {% if row.receipt %}
+          <a class="btn btn--plain btn--small" href="{{ base }}/review?edit={{ row.receipt.receipt_id|urlencode }}#d-{{ row.receipt.receipt_id }}">담당자 판정으로 정하기</a>
+          {% endif %}
         </div>
         {% endfor %}
       </section>
@@ -145,11 +148,40 @@
           {% set v = row.decision.verdict.value %}
           <tr class="{% if v == '확인필요' %}is-review{% endif %}">
             <td style="font-weight:800;white-space:nowrap">{{ row.decision.item }}</td>
-            <td><div style="font-weight:600">{{ row.label }}</div><div class="basis">{{ row.decision.basis|join(" · ") or row.decision.reasons|join(" · ") }}</div></td>
+            {% set d = row.decision %}
+            <td><div style="font-weight:600">{{ row.label }}</div><div class="basis">{{ d.basis|join(" · ") or d.reasons|join(" · ") }}</div>
+              {% if d.manual %}<div class="basis manual-note">사유: {{ d.manual.reason }} · 규정상 {{ d.manual.rule_verdict.value }} {{ d.manual.rule_approved|won }}원</div>{% endif %}
+              {% if row.receipt %}
+              {% set rid = row.receipt.receipt_id %}
+              <details class="manual" id="d-{{ rid }}"{% if edit == rid %} open{% endif %}>
+                <summary>판정 바꾸기</summary>
+                <form method="post" action="{{ base }}/receipts/{{ rid|urlencode }}/decision" class="stack">
+                  <div class="seg seg--4">
+                    {% for value, label in [("규정대로", "규정대로"), ("지급", "인정"), ("감액지급", "감액"), ("불인정", "불인정")] %}
+                    <label><input type="radio" name="verdict" value="{{ value }}" {% if (d.manual and d.manual.verdict.value == value) or (not d.manual and value == "규정대로") %}checked{% endif %}><span>{{ label }}</span></label>
+                    {% endfor %}
+                  </div>
+                  <div class="grid2">
+                    <div class="field"><label for="amt-{{ rid }}">감액 인정액(원)</label><input class="input input--num" id="amt-{{ rid }}" name="approved_amount" inputmode="numeric" placeholder="감액일 때만" value="{{ d.approved_amount if d.verdict.value == '감액지급' else '' }}"></div>
+                    <div class="field"><label for="why-{{ rid }}">사유 <span class="hint">· 규정대로가 아니면 필수</span></label><input class="input" id="why-{{ rid }}" name="reason" value="{{ d.manual.reason if d.manual else '' }}"></div>
+                  </div>
+                  <div class="hint">규정상 {{ (d.manual.rule_verdict if d.manual else d.verdict).value }} {{ (d.manual.rule_approved if d.manual else d.approved_amount)|won }}원 · 청구 {{ d.claimed_amount|won }}원. 규정보다 많이 인정하면 서류에 '규정 한도 초과 인정'으로 적어요.</div>
+                  <button class="btn btn--yellow btn--small" type="submit">판정 저장</button>
+                </form>
+                {% if row.over_cap %}
+                <form method="post" action="{{ base }}/resolve" class="row manual-extra">
+                  <input class="input input--inline" name="over_cap_reason" placeholder="상한 초과 사유(예: 행사장 인근 만실)" aria-label="상한 초과 사유" required>
+                  <button class="btn btn--small" type="submit">사유 저장 · 규정대로 10분의 3까지</button>
+                </form>
+                {% endif %}
+              </details>
+              {% endif %}
+            </td>
             <td style="white-space:nowrap">{{ row.day }}</td>
             <td class="amount muted">{{ row.decision.claimed_amount|won if row.receipt else "—" }}</td>
             <td class="amount" style="font-weight:800">{{ row.decision.approved_amount|won }}</td>
-            <td class="amount"><span class="chip {{ {'지급': 'chip--pay', '확인필요': 'chip--review', '감액지급': 'chip--reduced', '불인정': 'chip--denied'}[v] }}">{{ v }}</span></td>
+            <td class="amount"><span class="chip {{ {'지급': 'chip--pay', '확인필요': 'chip--review', '감액지급': 'chip--reduced', '불인정': 'chip--denied'}[v] }}">{{ v }}</span>
+              {% if row.decision.manual %}<span class="chip chip--manual" title="담당자 판정">담당자</span>{% if row.decision.manual.over_rule %}<span class="chip chip--reduced" title="규정이 계산한 인정액보다 많이 인정">규정 초과</span>{% endif %}{% endif %}</td>
           </tr>
         {% endfor %}
         </tbody>

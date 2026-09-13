@@ -1,6 +1,7 @@
 """출장 화면 라우트: 1 올리기 → 2 읽은 값 확인 → 3 판정 검토 → 4 서류 완성."""
 from __future__ import annotations
 from datetime import date
+from urllib.parse import quote
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
@@ -220,6 +221,14 @@ def register_extract(app: FastAPI, settings, deps, render, trip_base, see_other)
             jobs.alias(job_key(t, trip), job_key(t, new_id))
         return see_other(f"{trip_base(t, new_id)}/{'extract' if form.get('next') == 'extract' else 'review'}")
 
+    @app.post("/t/{traveler}/{trip_id}/receipts/{rid}/decision")
+    async def save_decision(request: Request, traveler: str, trip_id: str, rid: str):
+        status = existing(traveler, trip_id)
+        form = await request.form()
+        service.save_decision(status.traveler, status.trip_id, rid, str(form.get("verdict", "")), form.get("approved_amount", ""),
+                              str(form.get("reason", "")))
+        return see_other(f"{trip_base(status.traveler, status.trip_id)}/review#d-{quote(rid, safe='')}")
+
     @app.get("/t/{traveler}/{trip_id}/image/{image_id}")
     def receipt_image(traveler: str, trip_id: str, image_id: str):
         status = existing(traveler, trip_id)
@@ -252,7 +261,7 @@ def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) 
         with deps.clients() as clients:
             return fn(clients)
 
-    empty = dict(review=None, rows=[], law=None, law_error=None, law_notes=[], notices=[], pay_count=0, error=None,
+    empty = dict(review=None, rows=[], law=None, law_error=None, law_notes=[], notices=[], pay_count=0, error=None, edit="",
                  ask_vehicle=False, ask_in_city=False, doc={}, doc_open=False)
 
     def progress(request, status, job):
@@ -261,7 +270,7 @@ def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) 
                       done=done_steps(status), job=job, job_title=title, job_hint=hint)))
 
     @app.get("/t/{traveler}/{trip_id}/review", response_class=HTMLResponse)
-    def review_page(request: Request, traveler: str, trip_id: str, error: str = ""):
+    def review_page(request: Request, traveler: str, trip_id: str, error: str = "", edit: str = ""):
         status = existing(traveler, trip_id)
         t, trip = status.traveler, status.trip_id
         base, key = trip_base(t, trip), job_key(t, trip)
@@ -293,7 +302,9 @@ def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) 
                 label = " · ".join(x for x in (r.train_no or r.merchant or r.category.value, route) if x)
                 when = r.service_date or (r.paid_at.date() if r.paid_at else None)
                 day = (f"결제 {when.month}.{when.day}." if not r.service_date else f"{when.month}.{when.day}.") if when else "미상"
-            rows.append({"decision": d, "receipt": r, "label": label, "day": day, "kind": resolve_kind(d, r)})
+            over_cap = (r is not None and r.category is Category.LODGING and d.manual is None and d.verdict.value == "감액지급"
+                        and not review.trip.over_cap_reason)
+            rows.append({"decision": d, "receipt": r, "label": label, "day": day, "kind": resolve_kind(d, r), "over_cap": over_cap})
         pay_count = sum(1 for d in review.decisions if d.verdict.value in ("지급", "감액지급"))
         saved, profile = service.load_trip_yaml(t, trip), service.load_profile(t)
         tr = review.trip
@@ -306,7 +317,7 @@ def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) 
         doc = {"purpose": saved.get("purpose") or "", "org": profile.org, "dept": profile.dept, "approval": ", ".join(profile.approval)}
         return render(request, "review.html", base=base, status=status, done=done_steps(status), job=None, review=review, rows=rows,
                       law=review.law, law_error=None, law_notes=review.law_notes, notices=book.notices(today), pay_count=pay_count,
-                      error=ERRORS.get(error), ask_vehicle=ask_vehicle, ask_in_city=ask_in_city, doc=doc,
+                      error=ERRORS.get(error), ask_vehicle=ask_vehicle, ask_in_city=ask_in_city, doc=doc, edit=edit,
                       doc_open=not (doc["purpose"] and doc["org"] and doc["approval"]))
 
     @app.post("/t/{traveler}/{trip_id}/resolve")

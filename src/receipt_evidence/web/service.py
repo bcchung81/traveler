@@ -9,6 +9,7 @@ from ..extract import parse_datetime
 from ..ingest import SUPPORTED, sha256_file
 from ..law import LawBook, load_law_book, peek_law_book
 from ..models import Category, PipelineResult, Receipt, ReceiptImage, TravelerProfile
+from ..rules import MANUAL_VERDICTS
 from ..versioning import read_latest
 from ..workspace import (STAGING_PREFIX, TRIP_DIR_RE, TRIP_YAML_FIELDS, HashCache, NotFound, Suggestion, apply_overrides, is_staging,
                          load_overrides, load_traveler, move_trip, nfc, resolve_moved, staging_trip_id, suggest_trip, trip_file_owners,
@@ -333,6 +334,10 @@ class TripService:
                 entry["clear_warnings"] = codes
             else:
                 entry.pop("clear_warnings", None)
+        self._write_override(path, data, receipt_id, entry)
+
+    @staticmethod
+    def _write_override(path: Path, data: dict, receipt_id: str, entry: dict) -> None:
         if entry:
             data[receipt_id] = entry
         else:
@@ -341,6 +346,34 @@ class TripService:
             _yaml_dump(path, data)
         elif path.exists():
             path.unlink()
+
+    def save_decision(self, traveler: str, trip_id: str, receipt_id: str, verdict: str, amount: object = "", reason: str = "") -> None:
+        """담당자 판정: 규정대로(삭제)·지급·감액지급·불인정. 사유는 필수, 감액은 0<금액<청구액. 다른 확인값은 건드리지 않는다."""
+        receipts = {r.receipt_id: r for r in self.receipts(traveler, trip_id)}
+        if receipt_id not in receipts:
+            raise NotFound(f"영수증 {receipt_id}")
+        path = self.trip_dir(traveler, trip_id) / "overrides.yaml"
+        data = _yaml_load(path)
+        entry = dict(data.get(receipt_id) or {})
+        verdict = nfc(str(verdict or "")).strip()
+        if verdict in ("", "규정대로"):
+            entry.pop("decision", None)
+        else:
+            if verdict not in MANUAL_VERDICTS:
+                raise ValueError("판정은 규정대로·지급·감액지급·불인정 중 하나여야 해요")
+            text = nfc(str(reason or "")).strip()
+            if not text:
+                raise ValueError("판정을 바꾼 사유를 적어 주세요")
+            decision: dict = {"verdict": verdict, "reason": text}
+            if verdict == "감액지급":
+                claimed = receipts[receipt_id].amount or 0
+                digits = re.sub(r"[^\d]", "", str(amount or ""))
+                value = int(digits) if digits else 0
+                if not 0 < value < claimed:
+                    raise ValueError(f"감액 인정액은 0보다 크고 청구액 {claimed:,}원보다 작아야 해요")
+                decision["approved_amount"] = value
+            entry["decision"] = decision
+        self._write_override(path, data, receipt_id, entry)
 
     def _manifest(self, traveler: str, trip_id: str) -> list[ReceiptImage]:
         p = self.trip_out(traveler, trip_id) / "work" / "manifest.json"
