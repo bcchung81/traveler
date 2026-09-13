@@ -264,3 +264,47 @@ def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) 
         t, trip = status.traveler, status.trip_id
         jobs.submit(job_key(t, trip), "finalize", lambda: run_with_clients(lambda c: actions.do_finalize(settings, c, deps.vlm, t, trip)))
         return see_other(f"{trip_base(t, trip)}/result")
+
+# ---- 4 서류 완성 ----
+PREVIEW_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:"
+
+def register_result(app: FastAPI, settings, deps, render, trip_base, see_other) -> None:
+    from fastapi.responses import FileResponse, PlainTextResponse
+    service, jobs = deps.service, deps.jobs
+    existing = lambda traveler, trip_id: existing_trip(service, traveler, trip_id)
+
+    @app.get("/t/{traveler}/{trip_id}/result", response_class=HTMLResponse)
+    def result_page(request: Request, traveler: str, trip_id: str):
+        status = existing(traveler, trip_id)
+        t, trip = status.traveler, status.trip_id
+        base = trip_base(t, trip)
+        job = jobs.get(job_key(t, trip))
+        if job is not None and job.active:
+            title, hint = JOB_TEXT.get(job.kind, ("작업 중이에요", ""))
+            return render(request, "result.html", base=base, status=status, job=job, job_title=title, job_hint=hint,
+                          failed=None, result=None, current=None, versions=[])
+        failed = job.message if (job is not None and job.state == "error" and job.kind == "finalize") else None
+        result = service.latest_result(t, trip)
+        if result is None and not failed:
+            return see_other(f"{base}/review")
+        versions = service.versions(t, trip)
+        return render(request, "result.html", base=base, status=status, job=None, failed=failed, result=result,
+                      current=versions[-1] if versions and result else None, versions=list(reversed(versions)))
+
+    @app.get("/t/{traveler}/{trip_id}/v/{version}/evidence.hwpx")
+    def download(traveler: str, trip_id: str, version: int):
+        status = existing(traveler, trip_id)
+        t, trip = status.traveler, status.trip_id
+        path = service.version_file(t, trip, version, "evidence.hwpx")
+        return FileResponse(path, media_type="application/octet-stream", filename=f"출장여비_증빙내역서_{t}_{trip}_v{version}.hwpx")
+
+    @app.get("/t/{traveler}/{trip_id}/v/{version}/preview", response_class=HTMLResponse)
+    def preview(traveler: str, trip_id: str, version: int):
+        status = existing(traveler, trip_id)
+        html = service.version_file(status.traveler, status.trip_id, version, "preview.html").read_text(encoding="utf-8")
+        return HTMLResponse(html, headers={"Content-Security-Policy": PREVIEW_CSP, "X-Content-Type-Options": "nosniff"})
+
+    @app.get("/t/{traveler}/{trip_id}/v/{version}/changes", response_class=PlainTextResponse)
+    def changes(traveler: str, trip_id: str, version: int):
+        status = existing(traveler, trip_id)
+        return PlainTextResponse(service.version_file(status.traveler, status.trip_id, version, "changes.md").read_text(encoding="utf-8"))
