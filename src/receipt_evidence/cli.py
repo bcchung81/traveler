@@ -27,9 +27,9 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--vlm-url", dest="vlm_url", default="http://127.0.0.1:8088")
     c = sub.add_parser("check-vlm", help="llama-server 상태 확인")
     c.add_argument("--vlm-url", dest="vlm_url", default="http://127.0.0.1:8088")
-    w = sub.add_parser("web", help="로컬 웹앱 실행 (기본 http://127.0.0.1:8765)")
+    w = sub.add_parser("web", help="로컬 웹앱 실행 (기본 http://127.0.0.1:8780)")
     w.add_argument("--host", default="127.0.0.1", help="이 컴퓨터 주소만 허용 (127.0.0.1 · localhost · ::1)")
-    w.add_argument("--port", type=int, default=8765)
+    w.add_argument("--port", type=int, default=8780)  # 데모 시연1(tally 8770·기본 8765)과 겹치지 않게
     w.add_argument("--data", default="data")
     w.add_argument("--out", default="out")
     w.add_argument("--vlm-url", dest="vlm_url", default="http://127.0.0.1:8088")

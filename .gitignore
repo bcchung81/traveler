@@ -7,3 +7,4 @@ __pycache__/
 *.egg-info/
 .DS_Store
 design/receipt-evidence-ui/receipt-evidence-screen.html
+.run/

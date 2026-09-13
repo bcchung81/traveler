@@ -25,7 +25,7 @@ class WebSettings:
     data_dir: Path
     out_dir: Path
     host: str = "127.0.0.1"
-    port: int = 8765
+    port: int = 8780
     vlm_url: str = "http://127.0.0.1:8088"
     allowed_hosts: list[str] = field(default_factory=lambda: ["127.0.0.1", "localhost"])
 

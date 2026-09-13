@@ -13,8 +13,9 @@ description: data/<출장자>/<출장>/ 폴더의 영수증을 로컬 Qwen3-VL�
 - 예시는 `examples/`에 있다.
 
 ## 웹앱으로 하기
-- `uv run receipt-evidence web` 실행 후 http://127.0.0.1:8765 를 연다(이 컴퓨터에서만 열림). 홈 → 새 정산 → 올리기 → 읽은 값 확인 → 판정 검토 → 서류 완성 순서.
-- 로컬 AI(llama-server)는 새 영수증을 읽을 때만 자동으로 켜지고 다 읽으면 꺼진다. 미리 켜 둘 필요 없다.
+- 켜기 `./run-app.sh start`: 로컬 AI(llama-server :8088)를 켜고 준비되면 웹앱(http://127.0.0.1:8780)을 켠다. 끄기 `./run-app.sh stop`: 둘 다 끈다(`status`·`restart`도 있음). 쓰고 나면 반드시 `./run-app.sh stop`.
+- 스크립트 없이 `uv run receipt-evidence web`만 띄우면 로컬 AI는 새 영수증을 읽을 때만 자동으로 켜지고 다 읽으면 꺼진다.
+- 홈 → 새 정산 → 올리기 → 읽은 값 확인 → 판정 검토 → 서류 완성 순서.
 
 ## 절차
 1. VLM은 미리 켜지 않는다: `run`이 새 영수증을 읽어야 할 때만 `scripts/start_vlm.sh`로 켜고 끝나면 끈다. 영수증이 많으면 직접 `VLM_PARALLEL=4 bash scripts/start_vlm.sh &`로 켜고 `--workers 4`를 쓴 뒤, 끝나면 그 서버를 꼭 끈다.
