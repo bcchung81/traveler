@@ -72,3 +72,14 @@ class FakeProc:
         return 0
     def kill(self):
         self.alive = False
+
+def png_bytes(rgb, size=(240, 480)) -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", size, rgb).save(buf, "PNG")
+    return buf.getvalue()
+
+NEW_TRIP_FORM = {"traveler": "정백철", "grade": "제2호", "workplace_region": "나주", "approval": "담당, 팀장",
+                 "destination_region": "서울", "start_date": "2026-07-09", "end_date": "2026-07-10", "purpose": "회의", "route_stations": "나주, 용산"}
+
+def new_trip(client, files=(("k1.png", (10, 20, 30)),)):
+    return client.post("/new", data=NEW_TRIP_FORM, files=[("files", (n, png_bytes(rgb), "image/png")) for n, rgb in files])

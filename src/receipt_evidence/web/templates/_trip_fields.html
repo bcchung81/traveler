@@ -1,0 +1,31 @@
+{% macro trip_fields(profile, trip, with_traveler=False) %}
+{% set grade = profile.grade if profile else None %}
+<div class="stack" style="gap:14px">
+  {% if with_traveler %}
+  <div class="field"><label for="traveler">출장자</label><input class="input" id="traveler" name="traveler" required maxlength="60" placeholder="이름" value=""></div>
+  {% endif %}
+  <div class="field">
+    <span class="label">여비 구분 <span class="hint">· 공무원 여비 규정 별표1</span></span>
+    <div class="seg">
+      <label><input type="radio" name="grade" value="제1호" {% if grade == "제1호" %}checked{% endif %}><span>제1호</span></label>
+      <label><input type="radio" name="grade" value="제2호" {% if grade == "제2호" %}checked{% endif %}><span>제2호</span></label>
+    </div>
+  </div>
+  <div class="grid2">
+    <div class="field"><label for="workplace_region">근무지</label><input class="input" id="workplace_region" name="workplace_region" value="{{ profile.workplace_region if profile else '' }}"></div>
+    <div class="field"><label for="destination_region">출장지</label><input class="input" id="destination_region" name="destination_region" {% if with_traveler %}required{% endif %} value="{{ trip.get('destination_region') or '' }}"></div>
+  </div>
+  <div class="grid2">
+    <div class="field"><label for="start_date">출장 시작</label><input class="input" type="date" id="start_date" name="start_date" {% if with_traveler %}required{% endif %} value="{{ trip.get('start_date') or '' }}"></div>
+    <div class="field"><label for="end_date">출장 종료</label><input class="input" type="date" id="end_date" name="end_date" value="{{ trip.get('end_date') or '' }}"></div>
+  </div>
+  <div class="field"><label for="purpose">출장 목적</label><input class="input" id="purpose" name="purpose" placeholder="예: 기관 협의 회의 참석" value="{{ trip.get('purpose') or '' }}"></div>
+  <div class="field"><label for="route_stations">이용 역·경로 <span class="hint">· 쉼표로 구분, 철도 영수증 경로 확인용</span></label><input class="input" id="route_stations" name="route_stations" placeholder="예: 나주, 용산" value="{{ (trip.get('route_stations') or [])|join(', ') }}"></div>
+  <div class="field"><label for="approval">결재선 <span class="hint">· 쉼표로 구분</span></label><input class="input" id="approval" name="approval" placeholder="예: 담당, 팀장, 부장" value="{{ (profile.approval if profile else [])|join(', ') }}"></div>
+  <div class="grid2">
+    <div class="field"><label for="org">기관명</label><input class="input" id="org" name="org" value="{{ profile.org if profile else '' }}"></div>
+    <div class="field"><label for="dept">부서</label><input class="input" id="dept" name="dept" value="{{ profile.dept if profile else '' }}"></div>
+  </div>
+  <label class="checkline"><input type="hidden" name="official_vehicle" value=""><input type="checkbox" name="official_vehicle" value="on" {% if trip.get('official_vehicle') %}checked{% endif %}> 공용차량 이용(일비 1/2)</label>
+</div>
+{% endmacro %}
