@@ -1,5 +1,6 @@
 # src/receipt_evidence/rules.py
 from __future__ import annotations
+import unicodedata
 from collections.abc import Callable
 from datetime import date, timedelta
 from .models import Category, Decision, LawSnapshot, RateTable, Receipt, TripConfig, Verdict
@@ -20,7 +21,7 @@ ITEM = {Category.RAIL: "철도운임", Category.BUS: "버스운임", Category.AI
 Handler = Callable[[Receipt, TripConfig, RateTable, str, int], Decision]
 
 def region_key(region: str) -> str:
-    r = region.replace(" ", "")
+    r = unicodedata.normalize("NFC", region).replace(" ", "")  # NFD 입력(macOS 파일명 유래)도 같은 상한으로
     if "서울" in r:
         return "서울특별시"
     if "광역시" in r or any(r.startswith(m) for m in _METRO):

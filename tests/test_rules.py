@@ -1,5 +1,5 @@
 # tests/test_rules.py
-import json
+import json, unicodedata
 from datetime import date
 from pathlib import Path
 from receipt_evidence.models import Receipt, Category, Verdict
@@ -11,6 +11,7 @@ GOLD = [Receipt(**d) for d in json.loads((Path(__file__).parent / "fixtures/gold
 def test_region_key():
     assert region_key("서울 강남구") == "서울특별시" and region_key("부산광역시") == "광역시" and region_key("광주") == "광역시"
     assert region_key("전남 나주시") == "그 밖의 지역" and region_key("경기도 수원") == "그 밖의 지역"
+    assert region_key(unicodedata.normalize("NFD", "서울 강남구")) == "서울특별시"  # NFD 입력도 같은 상한
 
 def test_golden_three(trip, law_snapshot):
     ds = decide_all(GOLD, trip, law_snapshot)

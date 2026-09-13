@@ -1,6 +1,6 @@
 # src/receipt_evidence/workspace.py
 from __future__ import annotations
-import re
+import re, unicodedata
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -19,6 +19,10 @@ class TripJob:
     traveler_dir: Path
     trip_dir: Path
 
+def nfc(s: str) -> str:
+    """macOS Finder가 만든 한글 파일·폴더 이름(NFD)을 입력 문자열과 같은 NFC로 맞춘다."""
+    return unicodedata.normalize("NFC", s)
+
 def _is_receipt(p: Path) -> bool:
     return p.is_file() and p.suffix.lower() in SUPPORTED and not p.name.startswith(".")
 
@@ -27,20 +31,24 @@ def _subdirs(p: Path) -> list[Path]:
 
 def discover(data_dir: Path, travelers: list[str] | None = None, trips: list[str] | None = None) -> tuple[list[TripJob], list[str]]:
     jobs: list[TripJob] = []
-    warnings = [f"{p.name}: data/<출장자>/<출장>/ 폴더에 넣어야 처리돼요" for p in sorted(data_dir.iterdir()) if _is_receipt(p)]
+    want_travelers = {nfc(t) for t in travelers} if travelers else None
+    want_trips = {nfc(t) for t in trips} if trips else None
+    warnings = [f"{nfc(p.name)}: data/<출장자>/<출장>/ 폴더에 넣어야 처리돼요" for p in sorted(data_dir.iterdir()) if _is_receipt(p)]
     for tdir in _subdirs(data_dir):
-        if travelers and tdir.name not in travelers:
+        traveler = nfc(tdir.name)
+        if want_travelers and traveler not in want_travelers:
             continue
-        loose = sorted(p.name for p in tdir.iterdir() if _is_receipt(p))
+        loose = sorted(nfc(p.name) for p in tdir.iterdir() if _is_receipt(p))
         if loose:
-            warnings.append(f"{tdir.name}/{', '.join(loose)}: 출장 폴더에 넣어야 처리돼요")
+            warnings.append(f"{traveler}/{', '.join(loose)}: 출장 폴더에 넣어야 처리돼요")
         for trip in _subdirs(tdir):
-            if trips and trip.name not in trips:
+            trip_id = nfc(trip.name)
+            if want_trips and trip_id not in want_trips:
                 continue
             if not any(_is_receipt(p) for p in trip.iterdir()):
-                warnings.append(f"{tdir.name}/{trip.name}: 영수증이 없어 건너뜀")
+                warnings.append(f"{traveler}/{trip_id}: 영수증이 없어 건너뜀")
                 continue
-            jobs.append(TripJob(traveler=tdir.name, trip_id=trip.name, traveler_dir=tdir, trip_dir=trip))
+            jobs.append(TripJob(traveler=traveler, trip_id=trip_id, traveler_dir=tdir, trip_dir=trip))
     return jobs, warnings
 
 def _yaml(path: Path) -> dict:
@@ -50,7 +58,7 @@ def _yaml(path: Path) -> dict:
 
 def load_traveler(traveler_dir: Path) -> TravelerProfile:
     data = _yaml(traveler_dir / "traveler.yaml")
-    data.setdefault("name", traveler_dir.name)
+    data.setdefault("name", nfc(traveler_dir.name))
     return TravelerProfile.model_validate(data)
 
 def _base(job: TripJob, profile: TravelerProfile) -> dict:
@@ -66,7 +74,7 @@ def resolve_trip(job: TripJob, profile: TravelerProfile, receipts: list[Receipt]
 def propose_trip(trip_id: str, receipts: list[Receipt], base: dict) -> TripConfig:
     basis: list[str] = []
     folder_date, destination = None, ""
-    m = TRIP_DIR_RE.match(trip_id)
+    m = TRIP_DIR_RE.match(nfc(trip_id))
     if m:
         destination = m.group(2)
         try:

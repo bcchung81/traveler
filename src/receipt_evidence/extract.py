@@ -86,6 +86,27 @@ def to_receipt(image_id: str, data: dict, transcript_path: str) -> Receipt:
         seat_class=s("seat_class"), train_no=s("train_no"), approval_no=s("approval_no"), card_masked=mask_card(s("card_masked")),
         payer_name=s("payer_name"), region=s("region"), nights=_int(data.get("nights")), transcript_path=transcript_path, raw=data)
 
+# VLM이 '기타/미상'으로 답했을 때만 쓰는 결정론 보정. 결제대행 메일처럼 영수증에 종류가 드러나지 않는 경우를 잡는다.
+CATEGORY_KEYWORDS: list[tuple[Category, tuple[str, ...]]] = [
+    (Category.LODGING, ("여기어때", "야놀자", "에어비앤비", "airbnb", "아고다", "agoda", "부킹닷컴", "booking.com", "호텔스닷컴",
+                        "hotels.com", "호텔", "모텔", "리조트", "게스트하우스", "숙박", "객실", "체크인")),
+    (Category.RAIL, ("코레일", "한국철도공사", "korail", "srt", "에스알", "ktx", "승차권")),
+    (Category.TAXI, ("택시", "카카오t", "kakao t", "우티", "uber")),
+    (Category.BUS, ("고속버스", "시외버스", "버스타고")),
+    (Category.AIR, ("탑승권", "대한항공", "아시아나", "제주항공", "진에어", "티웨이", "에어부산")),
+]
+
+def infer_category(category: Category, merchant: str | None, transcript: str) -> tuple[Category, str | None]:
+    """(보정된 구분, 근거 키워드). VLM이 구분을 정했으면 그대로 둔다."""
+    if category not in (Category.OTHER, Category.UNKNOWN):
+        return category, None
+    hay = f"{merchant or ''}\n{transcript}".lower()
+    for cat, words in CATEGORY_KEYWORDS:
+        hit = next((w for w in words if w.lower() in hay), None)
+        if hit:
+            return cat, hit
+    return category, None
+
 def _structure(vlm: VlmClient, pngs: list[Path], transcript: str) -> dict | None:
     content = [{"type": "text", "text": STRUCTURE_PROMPT + transcript}] + [image_content(p) for p in pngs]
     user = {"role": "user", "content": content}
@@ -122,7 +143,11 @@ def _extract_group(vlm: VlmClient, group: list[ReceiptImage], tdir: Path, cache:
     if data is None:
         return Receipt(receipt_id=first.image_id, image_id=first.image_id, sha256=first.sha256, transcript_path=str(tpath),
                        warnings=["EXTRACT_FAILED"], confidence=0.0)
-    return to_receipt(first.image_id, data, str(tpath)).model_copy(update={"sha256": first.sha256})
+    r = to_receipt(first.image_id, data, str(tpath))
+    category, hit = infer_category(r.category, r.merchant, transcript)
+    if hit:
+        r = r.model_copy(update={"category": category, "raw": r.raw | {"category_inferred_from": hit}})
+    return r.model_copy(update={"sha256": first.sha256})
 
 def extract_receipts(vlm: VlmClient, images: list[ReceiptImage], out_dir: Path, *, cache: ExtractCache | None = None,
                      workers: int = 1) -> list[Receipt]:

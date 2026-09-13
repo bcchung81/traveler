@@ -7,7 +7,7 @@ from PIL import Image
 from receipt_evidence.cache import ExtractCache
 from receipt_evidence.models import ReceiptImage, Category
 from receipt_evidence.vlm import FakeVlmClient
-from receipt_evidence.extract import extract_receipts, parse_json_loose, parse_date, parse_datetime, mask_card, to_receipt
+from receipt_evidence.extract import extract_receipts, infer_category, parse_json_loose, parse_date, parse_datetime, mask_card, to_receipt
 
 KTX = {"category": "철도", "merchant": "한국철도공사", "business_no": "314-82-10024", "amount": 48200, "paid_at": "2026.07.08 22:10",
        "service_date": "2026-07-09(목)", "service_end_date": None, "origin": "나주", "destination": "용산", "seat_class": "일반실",
@@ -107,3 +107,13 @@ def test_workers_preserve_order(tmp_path):
     vlm = _ConstantVlm()
     rs = extract_receipts(vlm, imgs, tmp_path / "out", workers=4)
     assert [r.receipt_id for r in rs] == [f"i{i}-p1" for i in range(6)] and vlm.calls == 12
+
+def test_category_keyword_fallback_when_vlm_says_other(tmp_path):
+    # 실데이터: 토스페이먼츠 결제 메일은 '숙박'이라는 말이 없어 VLM이 '기타'로 분류했다
+    other = dict(KTX, category="기타", merchant="(주)여기어때컴퍼니", amount=100000)
+    vlm = FakeVlmClient(["구매상품 스탠다드 결제금액 100,000원", json.dumps(other, ensure_ascii=False)])
+    r = extract_receipts(vlm, [_img(tmp_path)], tmp_path / "out")[0]
+    assert r.category is Category.LODGING and r.raw["category_inferred_from"] == "여기어때"
+    assert infer_category(Category.RAIL, "(주)여기어때컴퍼니", "")[0] is Category.RAIL  # VLM이 분류한 값은 그대로 둔다
+    assert infer_category(Category.UNKNOWN, None, "코레일 승차권") == (Category.RAIL, "코레일")
+    assert infer_category(Category.OTHER, "문구점", "볼펜") == (Category.OTHER, None)

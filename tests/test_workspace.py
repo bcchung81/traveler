@@ -1,4 +1,5 @@
 # tests/test_workspace.py
+import unicodedata
 from datetime import date, datetime
 from pathlib import Path
 import yaml
@@ -65,3 +66,12 @@ def test_overrides_merge_and_clear_warnings(tmp_path):
     out = apply_overrides([stay, _rail("r1", date(2026, 7, 9), "나주", "용산")], load_overrides(tmp_path))
     assert out[0].service_date == date(2026, 7, 9) and out[0].region == "서울" and out[0].warnings == ["MISSING_APPROVAL"]
     assert out[0].raw["overrides"]["region"] == "서울" and out[1].receipt_id == "r1" and load_overrides(tmp_path / "none") == {}
+
+def test_nfd_folder_names_from_finder_are_normalized(tmp_path):
+    nfd = lambda s: unicodedata.normalize("NFD", s)  # macOS Finder가 만든 한글 이름은 자모 분리형(NFD)
+    root = tmp_path / "data"
+    _touch(root / nfd("정백철") / nfd("2026-07-09_서울") / "a.jpg")
+    jobs, _ = discover(root, travelers=["정백철"], trips=[nfd("2026-07-09_서울")])
+    assert [(j.traveler, j.trip_id) for j in jobs] == [("정백철", "2026-07-09_서울")]
+    assert load_traveler(jobs[0].traveler_dir).name == "정백철"
+    assert propose_trip(nfd("2026-07-09_서울"), [], {"traveler_name": "x", "trip_id": "t"}).destination_region == "서울"

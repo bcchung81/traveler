@@ -2966,6 +2966,15 @@ def test_e2e_real_receipts_incremental(tmp_path):
 
 ---
 
+## 실행 중 변경 기록 (2026-09-13 구현)
+- mcp SDK: `mcp>=1.12`가 2.2.0을 설치 → `mcp>=2.2,<3` 고정. 서버 테스트 fixture는 `MCPServer`, 도구 오류 필드는 `is_error`(1.x `isError`도 함께 읽음). echo 서버 `boom` 테스트로 오류 판정 검증.
+- PyMuPDF: `import fitz` 폐기 예정 경고 → `import pymupdf`.
+- uv 편집 설치: `__init__.py` 없이 첫 빌드가 캐시되면 `.pth`가 빠짐 → `uv sync --reinstall-package receipt-evidence`.
+- 테스트 수정: 보고서 정렬 테스트가 "정액"을 찾다 머리글 "인정액"에 걸림 → `"| 정액 |"`.
+- **macOS 한글 NFD 버그(실데이터에서 발견)**: Finder가 만든 파일·폴더 이름은 자모 분리형(NFD)이라 출장자 필터가 0건이 되고, `region_key`가 서울을 "그 밖의 지역"으로 판정해 숙박 상한이 100,000 → 70,000으로 틀어짐. `workspace.nfc()`로 출장자·출장 폴더명·필터를 NFC로 정규화하고 `region_key` 입력도 NFC로 정규화. 회귀 테스트 `test_nfd_folder_names_from_finder_are_normalized`, `test_region_key`(NFD) 추가.
+- **구분 보정(실데이터에서 발견)**: 토스페이먼츠 결제 메일 형태의 숙박 영수증을 VLM이 '기타'로 분류 → `extract.infer_category()`가 VLM이 기타/미상일 때만 판매자·전사문 키워드(여기어때·야놀자·호텔 → 숙박, 코레일·SRT → 철도, 택시, 버스, 항공)로 보정하고 `raw["category_inferred_from"]`에 근거 기록. 캐시된 결과에도 적용되므로 PROMPT_VERSION은 그대로. 테스트 `test_category_keyword_fallback_when_vlm_says_other` 추가.
+- 알려진 한계: 결제대행 메일은 판매자 사업자번호가 없어 VLM이 결제대행사(토스페이먼츠) 사업자번호를 `business_no`로 읽는다. 체크섬은 통과하므로 판정에는 영향이 없지만, 증빙 표기상 확인이 필요하다.
+
 ## 자체 점검
 - 요구사항 1(VLM 스캔→JSON): Task 2·3·4·5. 요구사항 2(korean-law 규정 검색): Task 6·7. 요구사항 3(표 정리·지급대상): Task 9·10. 요구사항 4(kordoc 증빙서식 HWPX): Task 11·13·16.
 - 확장성 결정: 한 출장 다건(Task 4 캐시·병렬, 9 교차검사, 10 정렬, 11 붙임 축소), 여러 출장 한꺼번에(Task 8 발견, 6 세션 재사용, 7 법령 일자 캐시, 13 실패 격리), 여러 출장자(Task 8 traveler.yaml, 13 요약, 14 필터), 추가 제출(Task 4 캐시, 12 버전, 13 changes.md, 16 E2E), 출장 정보 자동 제안(Task 8, 9 정액 행 확인필요, 10 표기).
