@@ -7,7 +7,7 @@ from datetime import date
 from pathlib import Path
 from urllib.parse import quote, unquote, urlsplit
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -50,6 +50,10 @@ def trip_base(traveler: str, trip_id: str) -> str:
 
 def see_other(url: str) -> RedirectResponse:
     return RedirectResponse(url, status_code=303)
+
+def wants_json(request: Request) -> bool:
+    """화면의 스크립트가 fetch로 보낸 요청(Accept: application/json) — 오류를 페이지 대신 팝업에 띄울 JSON으로 돌려준다."""
+    return "application/json" in request.headers.get("accept", "")
 
 def _back_link(request: Request) -> str:
     """같은 사이트 안의 이전 화면으로만 돌아간다(다른 사이트 주소는 무시)."""
@@ -103,6 +107,8 @@ def create_app(settings: WebSettings, deps: WebDeps | None = None) -> FastAPI:
     @app.exception_handler(InvalidName)
     @app.exception_handler(ValueError)
     async def bad_value(request: Request, exc: ValueError):
+        if wants_json(request):
+            return JSONResponse({"ok": False, "error": _friendly(exc)}, status_code=400)
         return error_page(request, 400, "입력한 값을 확인해 주세요", _friendly(exc))
 
     @app.exception_handler(TripMoved)
@@ -121,6 +127,8 @@ def create_app(settings: WebSettings, deps: WebDeps | None = None) -> FastAPI:
     @app.exception_handler(FileNotFoundError)
     @app.exception_handler(NotFound)
     async def not_found(request: Request, exc: Exception):
+        if wants_json(request):
+            return JSONResponse({"ok": False, "error": f"찾을 수 없어요: {exc}"}, status_code=404)
         return error_page(request, 404, "찾을 수 없어요", str(exc))
 
     templates.env.filters["won"] = lambda n: "—" if n is None else f"{int(n):,}"

@@ -60,3 +60,20 @@ def test_over_rule_badge_over_cap_reason_and_document(web):
     result = web.deps.service.latest_result("정백철", "2026-07-09_서울")
     md = open(result.report_md_path, encoding="utf-8").read()
     assert "## 담당자 판정 내역" in md and "[규정 한도 초과 인정]" in md and "사유: 기관장 승인" in md
+
+JSON = {"Accept": "application/json"}
+
+def test_decision_errors_come_back_as_json_for_popup(web):
+    new_trip(web, files=FILES)
+    stay = _rid(web, 100000)
+    page = web.get(f"{BASE}/review").text
+    assert '<dialog id="decision-dialog"' in page and page.count("data-claimed=") == 2 and 'data-claimed="100000"' in page
+    r = web.post(f"{BASE}/receipts/{stay}/decision", data={"verdict": "지급", "reason": " "}, headers=JSON)
+    assert r.status_code == 400 and r.headers["content-type"].startswith("application/json") and "사유" in r.json()["error"]
+    r = web.post(f"{BASE}/receipts/{stay}/decision", data={"verdict": "감액지급", "approved_amount": "200000", "reason": "x"}, headers=JSON)
+    assert r.status_code == 400 and "청구액 100,000원" in r.json()["error"]
+    r = web.post(f"{BASE}/receipts/{stay}/decision", data={"verdict": "지급", "reason": "체크인 확인"}, headers=JSON)
+    assert r.status_code == 200 and r.json()["ok"] and unquote(r.json()["redirect"]) == f"{BASE}/review#d-{stay}"
+    assert "248,200" in web.get(f"{BASE}/review").text
+    r = web.post(f"{BASE}/receipts/{stay}/decision", data={"verdict": "지급", "reason": ""})  # 스크립트가 꺼진 브라우저는 예전처럼 안내 화면
+    assert r.status_code == 400 and "text/html" in r.headers["content-type"]

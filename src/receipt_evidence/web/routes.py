@@ -227,7 +227,11 @@ def register_extract(app: FastAPI, settings, deps, render, trip_base, see_other)
         form = await request.form()
         service.save_decision(status.traveler, status.trip_id, rid, str(form.get("verdict", "")), form.get("approved_amount", ""),
                               str(form.get("reason", "")))
-        return see_other(f"{trip_base(status.traveler, status.trip_id)}/review#d-{quote(rid, safe='')}")
+        target = f"{trip_base(status.traveler, status.trip_id)}/review#d-{quote(rid, safe='')}"
+        if "application/json" in request.headers.get("accept", ""):  # 화면 스크립트: 페이지 이동 없이 결과만
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"ok": True, "redirect": target})
+        return see_other(target)
 
     @app.get("/t/{traveler}/{trip_id}/image/{image_id}")
     def receipt_image(traveler: str, trip_id: str, image_id: str):

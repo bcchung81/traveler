@@ -157,7 +157,8 @@
               {% set rid = row.receipt.receipt_id %}
               <details class="manual" id="d-{{ rid }}"{% if edit == rid %} open{% endif %}>
                 <summary>판정 바꾸기</summary>
-                <form method="post" action="{{ base }}/receipts/{{ rid|urlencode }}/decision" class="stack">
+                <form method="post" action="{{ base }}/receipts/{{ rid|urlencode }}/decision" class="stack" data-decision-form
+                      data-claimed="{{ d.claimed_amount }}" data-label="{{ d.item }} · {{ row.label }}">
                   <div class="seg seg--4">
                     {% for value, label in [("규정대로", "규정대로"), ("지급", "인정"), ("감액지급", "감액"), ("불인정", "불인정")] %}
                     <label><input type="radio" name="verdict" value="{{ value }}" {% if (d.manual and d.manual.verdict.value == value) or (not d.manual and value == "규정대로") %}checked{% endif %}><span>{{ label }}</span></label>
@@ -193,5 +194,85 @@
     </section>
     </div>
   </div>
+
+  <dialog id="decision-dialog" class="dialog" aria-labelledby="dd-title">
+    <form method="dialog" class="stack">
+      <span class="sticker">잠깐!</span>
+      <h2 class="title title--sm" id="dd-title" style="margin-top:6px">판정 사유를 입력해 주세요</h2>
+      <div class="hint" id="dd-target" style="font-weight:800;color:var(--ink)"></div>
+      <div class="banner banner--error" id="dd-msg" role="alert"></div>
+      <div class="field" id="dd-amount-field" hidden><label for="dd-amount">감액 인정액(원)</label><input class="input input--num" id="dd-amount" inputmode="numeric"></div>
+      <div class="field"><label for="dd-reason">판정 사유 <span class="hint">· 서류의 담당자 판정 내역에 그대로 적혀요</span></label>
+        <textarea class="input textarea" id="dd-reason" rows="3" placeholder="예: 체크인 7/9 확인(결제 메일에 숙박일 없음)"></textarea></div>
+      <div class="row"><button class="btn btn--yellow" id="dd-save" value="save">사유 넣고 저장</button><button class="btn" value="cancel">취소</button></div>
+    </form>
+  </dialog>
+  <script>
+  (function () {
+    var dlg = document.getElementById("decision-dialog");
+    if (!dlg || typeof dlg.showModal !== "function") return;  // 팝업을 못 쓰는 브라우저는 예전처럼 안내 화면으로
+    var msg = document.getElementById("dd-msg"), target = document.getElementById("dd-target"), amountField = document.getElementById("dd-amount-field");
+    var amount = document.getElementById("dd-amount"), reason = document.getElementById("dd-reason"), current = null;
+    var names = {"지급": "인정", "감액지급": "감액", "불인정": "불인정"};
+    function verdictOf(form) { var c = form.querySelector('input[name="verdict"]:checked'); return c ? c.value : "규정대로"; }
+    function won(v) { var d = String(v || "").replace(/[^0-9]/g, ""); return d ? parseInt(d, 10) : 0; }
+    function problem(form) {
+      var v = verdictOf(form);
+      if (v === "규정대로") return null;
+      if (v === "감액지급") {
+        var claimed = parseInt(form.dataset.claimed, 10) || 0, a = won(form.elements.approved_amount.value);
+        if (!(a > 0 && a < claimed)) return {msg: "감액 인정액은 0보다 크고 청구액 " + claimed.toLocaleString("ko-KR") + "원보다 작아야 해요", field: "amount"};
+      }
+      if (!form.elements.reason.value.trim()) return {msg: names[v] + "(으)로 바꾸려면 판정 사유가 필요해요.", field: "reason"};
+      return null;
+    }
+    function open(form, p) {
+      current = form;
+      var needAmount = verdictOf(form) === "감액지급";
+      target.textContent = form.dataset.label + " → " + (names[verdictOf(form)] || "규정대로");
+      msg.textContent = p.msg;
+      document.getElementById("dd-title").textContent = p.field === "amount" ? "감액 인정액을 확인해 주세요" : "판정 사유를 입력해 주세요";
+      amountField.hidden = !needAmount;
+      amount.value = form.elements.approved_amount.value;
+      reason.value = form.elements.reason.value;
+      if (!dlg.open) dlg.showModal();
+      (p.field === "amount" && needAmount ? amount : reason).focus();
+    }
+    function send(form) {
+      var btn = form.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      fetch(form.action, {method: "POST", body: new FormData(form), headers: {Accept: "application/json"}})
+        .then(function (r) { return r.json().then(function (data) { return {ok: r.ok, data: data}; }); })
+        .then(function (res) {
+          if (res.ok && res.data.redirect) {
+            var u = new URL(res.data.redirect, location.href);
+            if (u.pathname + u.search === location.pathname + location.search) { location.hash = u.hash; location.reload(); }
+            else { location.assign(u.href); }
+            return;
+          }
+          btn.disabled = false;
+          open(form, {msg: res.data.error || "저장하지 못했어요", field: /감액/.test(res.data.error || "") ? "amount" : "reason"});
+        })
+        .catch(function () { btn.disabled = false; open(form, {msg: "저장하지 못했어요. 잠시 뒤 다시 시도해 주세요", field: "reason"}); });
+    }
+    document.querySelectorAll("form[data-decision-form]").forEach(function (form) {
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var p = problem(form);
+        if (p) open(form, p); else send(form);
+      });
+    });
+    document.getElementById("dd-save").addEventListener("click", function (e) {
+      e.preventDefault();
+      if (!current) return;
+      current.elements.reason.value = reason.value;
+      if (!amountField.hidden) current.elements.approved_amount.value = amount.value;
+      var p = problem(current);
+      if (p) { msg.textContent = p.msg; (p.field === "amount" ? amount : reason).focus(); return; }
+      dlg.close();
+      send(current);
+    });
+  })();
+  </script>
 {% endif %}
 {% endblock %}
