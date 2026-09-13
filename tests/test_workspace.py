@@ -52,7 +52,7 @@ def test_propose_trip_ignores_payment_only_dates():
     rs = [_rail("r1", date(2026, 7, 9), "나주", "용산"), _rail("r2", date(2026, 7, 10), "용산", "나주"), stay]
     t = propose_trip("2026-07-09_서울", rs, {"traveler_name": "정백철", "trip_id": "2026-07-09_서울"})
     assert t.proposed and (t.start_date, t.end_date) == (date(2026, 7, 9), date(2026, 7, 10))
-    assert t.destination_region == "서울" and t.route_stations == ["나주", "용산"] and len(t.proposal_basis) == 3
+    assert t.destination_region == "서울" and t.route_stations == ["나주", "용산"] and "폴더 이름" in t.proposal_basis
     y = yaml.safe_load(dump_trip_yaml(t))
     assert y["start_date"] == "2026-07-09" and y["destination_region"] == "서울" and "traveler_name" not in y
 
@@ -123,3 +123,59 @@ def test_trip_file_owners_cover_all_trips(tmp_path):
     assert {"정백철/2026-07-09_서울", "정백철/2026-08-03_부산", "홍길동/2026-07-20_대전"} == keys
     assert len(owners) == 1  # _tree는 모든 파일 내용이 b"x"로 같다 → 한 해시에 세 출장
     assert issubclass(NotFound, LookupError)
+
+from receipt_evidence.workspace import (STAGING_PREFIX, is_staging, move_trip, resolve_moved, staging_trip_id, suggest_trip,
+                                        unique_trip_id)
+
+def _leg(rid, day, o, d, cat=Category.RAIL, paid=None):
+    return Receipt(receipt_id=rid, image_id=rid, category=cat, amount=48200, service_date=day, origin=o, destination=d, paid_at=paid,
+                   region="대전광역시")  # 철도 영수증 region은 코레일 본사 주소 — 출장지로 쓰면 안 된다
+
+def test_suggest_round_trip_from_rail_legs_ignores_payment_date_and_receipt_region():
+    rs = [_leg("b", date(2026, 7, 10), "용산", "나주", paid=datetime(2026, 6, 11, 8, 31)), _leg("a", date(2026, 7, 9), "나주", "용산")]
+    s = suggest_trip("_새정산-20260913-223105", rs)
+    assert (s["start_date"].value, s["end_date"].value) == (date(2026, 7, 9), date(2026, 7, 10))
+    assert s["destination_region"].value == "서울" and "용산" in s["destination_region"].basis
+    assert s["workplace_region"].value == "나주" and s["workplace_region"].guessed
+    assert s["route_stations"].value == ["나주", "용산"] and "lodging_region" not in s
+
+def test_suggest_return_ticket_only_uses_known_workplace():
+    s = suggest_trip("_새정산-x", [_leg("r", date(2026, 7, 10), "용산", "나주")], workplace="나주")
+    assert s["destination_region"].value == "서울" and s["start_date"].value == date(2026, 7, 10) and "workplace_region" not in s
+
+def test_suggest_unknown_station_lodging_dates_and_payer():
+    stay = Receipt(receipt_id="s", image_id="s", category=Category.LODGING, amount=100000, service_date=date(2026, 8, 27),
+                   service_end_date=date(2026, 8, 29), payer_name="정백철", region="서울 강남구 테헤란로")  # 결제대행사 주소
+    s = suggest_trip("_새정산-x", [_leg("a", date(2026, 8, 27), "나주", "정동진"), stay])
+    assert s["destination_region"].value == "정동진" and s["destination_region"].guessed  # 표에 없는 역은 역명 그대로, 확인 권장
+    assert (s["start_date"].value, s["end_date"].value) == (date(2026, 8, 27), date(2026, 8, 29))
+    assert s["payer_names"].value == ["정백철"]
+    assert "lodging_region" not in s  # 숙박 영수증에 region이 있으면 추정하지 않는다(판정은 영수증 값을 쓴다)
+    nostay = stay.model_copy(update={"region": None})
+    s2 = suggest_trip("_새정산-x", [_leg("a", date(2026, 8, 27), "나주", "용산"), nostay])
+    assert s2["lodging_region"].value == "서울" and s2["lodging_region"].guessed
+
+def test_suggest_prefers_user_named_folder_and_handles_no_receipts():
+    s = suggest_trip("2026-07-09_부산", [_leg("a", date(2026, 7, 9), "나주", "용산")])
+    assert s["destination_region"].value == "부산" and "폴더" in s["destination_region"].basis
+    assert suggest_trip("_새정산-x", []) == {}
+
+def test_staging_names_unique_ids_and_move_trip(tmp_path):
+    data, out = tmp_path / "data", tmp_path / "out"
+    sid = staging_trip_id(datetime(2026, 9, 13, 22, 31, 5))
+    assert sid == f"{STAGING_PREFIX}20260913-223105" and is_staging(sid) and not is_staging("2026-07-09_서울")
+    old = data / "정백철" / sid; old.mkdir(parents=True); (old / "k.png").write_bytes(b"x")
+    (data / "정백철" / "2026-07-09_서울").mkdir()
+    assert unique_trip_id(data, "정백철", "2026-07-09_서울") == "2026-07-09_서울_2"
+    work = out / "정백철" / sid / "work"; (work / "transcripts").mkdir(parents=True)
+    (work / "manifest.json").write_text(json.dumps([{"source_path": str(old / "k.png"), "png_path": str(work / "images/a.png")}], ensure_ascii=False), encoding="utf-8")
+    new = move_trip(data, out, "정백철", sid, "2026-07-09_서울_2")
+    assert new == "2026-07-09_서울_2" and not old.exists() and (data / "정백철" / new / "k.png").exists()
+    m = json.loads((out / "정백철" / new / "work" / "manifest.json").read_text(encoding="utf-8"))[0]
+    assert m["source_path"] == str(data / "정백철" / new / "k.png") and m["png_path"] == str(out / "정백철" / new / "work/images/a.png")
+    assert resolve_moved(out, "정백철", sid) == new and resolve_moved(out, "정백철", new) is None
+    move_trip(data, out, "정백철", new, "2026-07-10_서울")
+    assert resolve_moved(out, "정백철", sid) == "2026-07-10_서울"  # 여러 번 옮겨도 최종 주소로
+    (out / "정백철" / "2026-07-10_서울" / "latest.json").write_text('{"version": 1, "fingerprint": "f"}', encoding="utf-8")
+    with pytest.raises(ValueError, match="서류"):
+        move_trip(data, out, "정백철", "2026-07-10_서울", "2026-07-11_서울")

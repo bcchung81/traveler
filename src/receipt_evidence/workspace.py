@@ -1,17 +1,19 @@
 # src/receipt_evidence/workspace.py
 from __future__ import annotations
-import fcntl, json, os, re, threading, unicodedata
+import fcntl, json, os, re, shutil, threading, unicodedata
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 import yaml
 from .ingest import SUPPORTED, sha256_file
 from .models import Category, Receipt, TravelerProfile, TripConfig
+from .stations import place_of
 from .validate import FIELD_GROUP, mark_dup_approval, validate_receipt
 
 TRIP_DIR_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})_([^_]+)")
+STAGING_PREFIX = "_새정산-"  # 웹에서 올린 직후의 임시 출장 폴더. 읽은 뒤 YYYY-MM-DD_출장지로 이름을 바꾼다
 TRIP_YAML_FIELDS = ("start_date", "end_date", "destination_region", "purpose", "route_stations", "lodging_region",
                     "over_cap_reason", "taxi_reason", "official_vehicle", "within_workplace", "duration_hours")
 
@@ -152,35 +154,164 @@ def resolve_trip(job: TripJob, profile: TravelerProfile, receipts: list[Receipt]
         return TripConfig.model_validate(_base(job, profile) | _yaml(trip_yaml))
     return propose_trip(job.trip_id, receipts, _base(job, profile))
 
-def propose_trip(trip_id: str, receipts: list[Receipt], base: dict) -> TripConfig:
-    basis: list[str] = []
-    folder_date, destination = None, ""
+@dataclass(frozen=True)
+class Suggestion:
+    """영수증에서 채운 값과 근거. guessed=True면 표에 없는 역 이름이나 추정이라 확인을 권한다."""
+    value: object
+    basis: str
+    guessed: bool = False
+
+_TRANSPORT = (Category.RAIL, Category.BUS, Category.AIR)
+
+def _md(d: date) -> str:
+    return f"{d.month}/{d.day}"
+
+def _leg_label(r: Receipt) -> str:
+    return f"{r.train_no or r.category.value} {r.origin or '?'}→{r.destination or '?'} {_md(r.service_date)}"
+
+def _place(name: str) -> tuple[str, bool]:
+    """(도시, 추정 여부). 표에 없는 이름은 그대로 쓰고 추정으로 본다."""
+    city = place_of(name)
+    return (city, False) if city else (nfc(name).strip(), True)
+
+def suggest_trip(trip_id: str, receipts: list[Receipt], workplace: str = "") -> dict[str, Suggestion]:
+    """영수증으로 출장 정보를 채운다. 결제일(사전 예매)과 영수증의 가맹점 주소(region)는 기간·출장지 근거로 쓰지 않는다."""
+    out: dict[str, Suggestion] = {}
     m = TRIP_DIR_RE.match(nfc(trip_id))
+    folder_date = None
     if m:
-        destination = m.group(2)
         try:
             folder_date = date.fromisoformat(m.group(1))
         except ValueError:
             folder_date = None
-    service = sorted(r.service_date for r in receipts if r.service_date)  # 결제일(paid_at)만 있는 영수증은 기간에 넣지 않는다
-    ends = sorted(r.service_end_date for r in receipts if r.service_end_date)
-    starts = [d for d in (folder_date, service[0] if service else None) if d]
-    finishes = [d for d in (folder_date, service[-1] if service else None, ends[-1] if ends else None) if d]
-    if folder_date:
-        basis.append(f"폴더명 날짜 {folder_date}")
-    if service:
-        basis.append(f"영수증 운행·체크인일 {service[0]}~{service[-1]}")
-    stations: list[str] = []
+    legs = sorted((r for r in receipts if r.category in _TRANSPORT and r.service_date and (r.origin or r.destination)),
+                  key=lambda r: r.service_date)
+    starts: list[tuple[date, str]] = []
+    ends: list[tuple[date, str]] = []
     for r in receipts:
+        if r.service_date:
+            label = _leg_label(r) if r in legs else f"{r.merchant or r.category.value} {_md(r.service_date)}"
+            starts.append((r.service_date, label))
+            ends.append((r.service_date, label))
+        if r.service_end_date:
+            ends.append((r.service_end_date, f"{r.merchant or r.category.value} ~{_md(r.service_end_date)}"))
+    if folder_date:
+        starts.append((folder_date, "폴더 이름 날짜"))
+        ends.append((folder_date, "폴더 이름 날짜"))
+    if starts:
+        d, why = min(starts, key=lambda x: x[0])
+        out["start_date"] = Suggestion(d, why)
+    if ends:
+        d, why = max(ends, key=lambda x: x[0])
+        out["end_date"] = Suggestion(d, why)
+    home = _place(workplace)[0] if workplace else None
+    if not workplace and legs and legs[0].origin:
+        city, guessed = _place(legs[0].origin)
+        out["workplace_region"] = Suggestion(city, f"첫 출발 {_leg_label(legs[0])}", True)
+        home = city
+    if m:
+        out["destination_region"] = Suggestion(m.group(2), "폴더 이름")
+    else:
+        for leg in legs:
+            ends_ = [(x, leg) for x in (leg.destination, leg.origin) if x]
+            hit = next(((_place(x), l) for x, l in ends_ if _place(x)[0] != home), None)
+            if hit:
+                (city, guessed), l = hit
+                out["destination_region"] = Suggestion(city, _leg_label(l), guessed)
+                break
+    stations: list[str] = []
+    for r in sorted(receipts, key=lambda r: r.service_date or date.max):  # 운행일 순서(가는 편 먼저)
         if r.category is Category.RAIL:
-            for s in (r.origin, r.destination):
-                if s and s not in stations:
-                    stations.append(s)
+            for x in (r.origin, r.destination):
+                if x and x not in stations:
+                    stations.append(x)
     if stations:
-        basis.append(f"철도 구간 {'·'.join(stations)}")
+        out["route_stations"] = Suggestion(stations, "철도 구간 " + "·".join(stations))
+    if "destination_region" in out and any(r.category is Category.LODGING and not r.region for r in receipts):
+        out["lodging_region"] = Suggestion(out["destination_region"].value, "숙박 영수증에 지역이 없어 출장지로 추정", True)
+    payers = sorted({nfc(r.payer_name).strip() for r in receipts if r.payer_name and r.payer_name.strip()})
+    if payers:
+        out["payer_names"] = Suggestion(payers, "영수증 결제자")
+    return out
+
+def propose_trip(trip_id: str, receipts: list[Receipt], base: dict) -> TripConfig:
+    s = suggest_trip(trip_id, receipts, base.get("workplace_region") or "")
+    basis: list[str] = []
+    for key in ("start_date", "end_date", "destination_region", "route_stations"):
+        if key in s and s[key].basis not in basis:
+            basis.append(s[key].basis)
+    value = lambda k, default=None: s[k].value if k in s else default
     return TripConfig.model_validate(base | {
-        "destination_region": destination, "start_date": min(starts) if starts else None, "end_date": max(finishes) if finishes else None,
-        "route_stations": stations, "proposed": True, "proposal_basis": basis})
+        "destination_region": value("destination_region", ""), "start_date": value("start_date"), "end_date": value("end_date"),
+        "route_stations": value("route_stations", []), "proposed": True, "proposal_basis": basis})
+
+# ---- 임시 폴더·이름 바꾸기 ----
+
+def staging_trip_id(now: datetime | None = None) -> str:
+    return f"{STAGING_PREFIX}{(now or datetime.now()):%Y%m%d-%H%M%S}"
+
+def is_staging(trip_id: str) -> bool:
+    return nfc(trip_id).startswith(STAGING_PREFIX)
+
+def unique_trip_id(data_dir: Path, traveler: str, base_id: str) -> str:
+    cand, n = base_id, 1
+    while (data_dir / traveler / cand).exists():
+        n += 1
+        cand = f"{base_id}_{n}"
+    return cand
+
+def _renames_path(out_dir: Path) -> Path:
+    return out_dir / ".cache" / "renames.json"
+
+def _read_renames(out_dir: Path) -> dict[str, str]:
+    try:
+        return json.loads(_renames_path(out_dir).read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return {}
+
+def resolve_moved(out_dir: Path, traveler: str, trip_id: str) -> str | None:
+    """옮긴 출장이면 최종 출장 폴더 이름(여러 번 옮겼으면 따라감), 아니면 None."""
+    data, key, seen, cur = _read_renames(out_dir), trip_key(traveler, nfc(trip_id)), set(), None
+    while key in data and key not in seen:
+        seen.add(key)
+        cur = data[key]
+        key = trip_key(traveler, cur)
+    return cur
+
+def was_auto_named(out_dir: Path, traveler: str, trip_id: str) -> bool:
+    return trip_id in {v for k, v in _read_renames(out_dir).items() if k.startswith(f"{traveler}/")}
+
+def move_trip(data_dir: Path, out_dir: Path, traveler: str, old: str, new: str) -> str:
+    """출장 폴더 이름을 바꾼다(data·out 함께). 이미 서류를 만든 출장은 바꾸지 않는다. out/work의 경로 문자열도 새 경로로 고친다."""
+    src, dst = data_dir / traveler / old, data_dir / traveler / new
+    src_out, dst_out = out_dir / traveler / old, out_dir / traveler / new
+    if (src_out / "latest.json").exists():
+        raise ValueError("이미 서류를 만든 출장은 폴더 이름을 바꾸지 않아요")
+    if dst.exists():
+        raise ValueError(f"같은 이름의 출장 폴더가 이미 있어요: {new}")
+    src.rename(dst)
+    if src_out.exists():
+        if dst_out.exists():
+            if (dst_out / "latest.json").exists():
+                dst.rename(src)
+                raise ValueError(f"같은 이름의 출장 결과가 이미 있어요: {new}")
+            shutil.rmtree(dst_out)  # 데이터 폴더 없이 남은 예전 작업 찌꺼기
+        src_out.rename(dst_out)
+        pairs = [(str(a), str(b)) for a, b in ((src, dst), (src_out, dst_out))]
+        pairs += [(unicodedata.normalize("NFD", a), unicodedata.normalize("NFD", b)) for a, b in pairs]
+        for f in list((dst_out / "work").glob("*.json")) + list((dst_out / "work").glob("*.yaml")):
+            text = f.read_text(encoding="utf-8")
+            new_text = text
+            for a, b in pairs:
+                new_text = new_text.replace(a, b)
+            if new_text != text:
+                f.write_text(new_text, encoding="utf-8")
+    renames = _read_renames(out_dir)
+    renames[trip_key(traveler, old)] = new
+    path = _renames_path(out_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(renames, ensure_ascii=False, indent=2), encoding="utf-8")
+    return new
 
 def dump_trip_yaml(trip: TripConfig) -> str:
     data = trip.model_dump(mode="json", include=set(TRIP_YAML_FIELDS))

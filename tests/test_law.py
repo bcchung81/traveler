@@ -79,7 +79,8 @@ def test_law_book_offline_falls_back_to_latest_held(law_fixture_text, tmp_path):
     off = _caller(law_fixture_text, fail=True)
     book = get_law_book(off, tmp_path, date(2026, 9, 14), now=now)
     assert not book.online and book.current.mst == "287535" and "ENOTFOUND" in book.error
-    assert any("인터넷" in x and "2026. 9. 13." in x for x in book.notes())
+    fetched = book.current.fetched_at.date()  # 실제로 받은 날(테스트 실행일)
+    assert any("인터넷" in x and f"{fetched.year}. {fetched.month}. {fetched.day}." in x for x in book.notes())
     tries = len(off.calls)
     get_law_book(off, tmp_path, date(2026, 9, 14), now=now + timedelta(minutes=5))
     assert len(off.calls) == tries  # 방금 실패했으면 10분 동안은 다시 조회하지 않는다
