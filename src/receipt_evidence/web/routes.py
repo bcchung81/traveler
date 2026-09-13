@@ -180,3 +180,87 @@ def register_extract(app: FastAPI, settings, deps, render, trip_base, see_other)
         status = existing(traveler, trip_id)
         return FileResponse(service.image_path(status.traveler, status.trip_id, image_id), media_type="image/png",
                             headers={"Cache-Control": "private, max-age=600"})
+
+# ---- 3 판정 검토 ----
+def resolve_kind(decision, receipt) -> str:
+    """확인필요 항목을 화면에서 어떻게 해소할지 고른다."""
+    from ..models import Category
+    if receipt is None:
+        return "period"
+    if any("검증 경고" in r for r in decision.reasons):
+        return "check"
+    if "별표1" in decision.basis:
+        return "grade"
+    if receipt.category is Category.TAXI:
+        return "taxi"
+    if receipt.category is Category.LODGING:
+        return "lodging"
+    return "check"
+
+def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) -> None:
+    from ..pipeline import find_job, review_receipts
+    from ..report import order_decisions
+    service, jobs = deps.service, deps.jobs
+    existing = lambda traveler, trip_id: existing_trip(service, traveler, trip_id)
+
+    def run_with_clients(fn):
+        with deps.clients() as clients:
+            return fn(clients)
+
+    def progress(request, status, job):
+        title, hint = JOB_TEXT.get(job.kind, ("작업 중이에요", ""))
+        return render(request, "review.html", base=trip_base(status.traveler, status.trip_id), status=status, done=done_steps(status),
+                      job=job, job_title=title, job_hint=hint, review=None, rows=[], law=None, law_error=None, pay_count=0)
+
+    @app.get("/t/{traveler}/{trip_id}/review", response_class=HTMLResponse)
+    def review_page(request: Request, traveler: str, trip_id: str):
+        status = existing(traveler, trip_id)
+        t, trip = status.traveler, status.trip_id
+        base, key = trip_base(t, trip), job_key(t, trip)
+        job = jobs.get(key)
+        if job is not None and job.active:
+            return progress(request, status, job)
+        receipts = service.receipts(t, trip)
+        if not receipts:
+            return see_other(f"{base}/upload")
+        law = service.cached_law(date.today())
+        if law is None:
+            job = jobs.submit(key, "law", lambda: run_with_clients(lambda c: actions.do_warm_law(settings, c)))
+            if job.active:
+                return progress(request, status, job)
+            law = service.cached_law(date.today())
+            if law is None:
+                return render(request, "review.html", base=base, status=status, done=done_steps(status), job=None, review=None, rows=[],
+                              law=None, law_error=job.message or "법령 캐시를 만들지 못했어요", pay_count=0)
+        review = review_receipts(find_job(settings.data_dir, t, trip), receipts, law)
+        by_id = {r.receipt_id: r for r in review.receipts}
+        rows = []
+        for d in order_decisions(review.decisions, review.receipts):
+            r = by_id.get(d.receipt_id or "")
+            if r is None:
+                label, day = ("출장일수 정액" if d.claimed_amount == 0 else d.item), "정액"
+            else:
+                route = f"{r.origin} → {r.destination}" if r.origin and r.destination else ""
+                label = " · ".join(x for x in (r.train_no or r.merchant or r.category.value, route) if x)
+                when = r.service_date or (r.paid_at.date() if r.paid_at else None)
+                day = (f"결제 {when.month}.{when.day}." if not r.service_date else f"{when.month}.{when.day}.") if when else "미상"
+            rows.append({"decision": d, "receipt": r, "label": label, "day": day, "kind": resolve_kind(d, r)})
+        pay_count = sum(1 for d in review.decisions if d.verdict.value in ("지급", "감액지급"))
+        return render(request, "review.html", base=base, status=status, done=done_steps(status), job=None, review=review, rows=rows,
+                      law=law, law_error=None, pay_count=pay_count)
+
+    @app.post("/t/{traveler}/{trip_id}/resolve")
+    async def resolve(request: Request, traveler: str, trip_id: str):
+        status = existing(traveler, trip_id)
+        form = await request.form()
+        service.save_profile(status.traveler, _pick(form, ("grade",)))
+        service.save_trip_yaml(status.traveler, status.trip_id,
+                               _pick(form, ("lodging_region", "over_cap_reason", "taxi_reason", "start_date", "end_date", "destination_region")))
+        return see_other(f"{trip_base(status.traveler, status.trip_id)}/review")
+
+    @app.post("/t/{traveler}/{trip_id}/finalize")
+    def finalize(traveler: str, trip_id: str):
+        status = existing(traveler, trip_id)
+        t, trip = status.traveler, status.trip_id
+        jobs.submit(job_key(t, trip), "finalize", lambda: run_with_clients(lambda c: actions.do_finalize(settings, c, deps.vlm, t, trip)))
+        return see_other(f"{trip_base(t, trip)}/result")

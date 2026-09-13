@@ -108,7 +108,7 @@ def create_app(settings: WebSettings, deps: WebDeps | None = None) -> FastAPI:
     def vlm_badge(request: Request):
         return render(request, "_vlm.html")
 
-    from .routes import register, register_extract
-    register(app, settings, deps, render, trip_base, see_other)
-    register_extract(app, settings, deps, render, trip_base, see_other)
+    from .routes import register, register_extract, register_review
+    for reg in (register, register_extract, register_review):
+        reg(app, settings, deps, render, trip_base, see_other)
     return app

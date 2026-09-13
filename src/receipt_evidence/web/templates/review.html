@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% from "_steps.html" import steps %}
+{% block title %}지급 판정 검토 · 여비정산 증빙{% endblock %}
+{% block meta %}{{ status.traveler }} · {{ status.trip_id }}{% if review %} · 여비 구분 {{ review.trip.grade or "미확정" }}{% endif %}{% endblock %}
+{% block cta %}
+{% if review and not (job and job.active) %}
+<form method="post" action="{{ base }}/finalize">
+  <button class="cta" type="submit">HWPX 증빙서류 만들기 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></button>
+</form>
+{% endif %}
+{% endblock %}
+{% block content %}
+{% set review_count = review.review_items|length if review else 0 %}
+{{ steps(base, 3, done=done, subs={3: (("지급 " ~ pay_count ~ " · 확인 " ~ review_count) if review else "여비 규정을 찾는 중이에요")}) }}
+
+{% if job and job.active %}
+  {% include "_job.html" %}
+{% elif law_error %}
+  <section class="panel" role="alert"><span class="sticker">규정 조회 실패</span>
+    <h2 class="title" style="margin-top:8px">여비 규정을 가져오지 못했어요</h2><div class="hint">{{ law_error }}</div>
+    <a class="btn btn--yellow" href="{{ base }}/review">다시 시도</a>
+  </section>
+{% elif review %}
+  {% if status.stale %}
+  <div class="banner">파일이 바뀌었어요 — 새로 올린 영수증은 아직 판정에 없어요.
+    <form method="post" action="{{ base }}/extract"><button class="btn btn--small" type="submit">다시 읽기</button></form>
+  </div>
+  {% endif %}
+  <div class="layout-review">
+    <div class="stack" style="gap:28px">
+      <section class="panel panel--dark">
+        <div class="title title--sm" style="color:var(--yellow)">받을 수 있는 여비</div>
+        <div class="row" style="align-items:baseline;gap:8px"><span class="num total-big">{{ review.totals.approved|won }}</span><span class="title">원</span></div>
+        <div class="hint" style="color:rgba(250,248,242,0.7)">청구 {{ review.totals.claimed|won }} · 확인필요 {{ review.totals.review|won }} 별도</div>
+        <div class="hint" style="color:rgba(250,248,242,0.7)">공무원 여비 규정 · {{ law.effective|kdate }} 시행</div>
+      </section>
+
+      {% if review_count %}
+      <section class="panel">
+        <span class="sticker">잠깐, 확인!</span>
+        <h2 class="title" style="margin-top:10px">확인이 필요한 {{ review_count }}건</h2>
+        {% if review.trip.proposed %}
+        <div class="banner">출장 정보가 자동 제안값이에요. 기간을 확정하면 일비·식비가 지급으로 바뀌어요.</div>
+        {% endif %}
+        {% for row in rows if row.decision.verdict.value == "확인필요" %}
+        <div class="resolve">
+          <div style="font-weight:800">{{ row.label }}</div>
+          <div class="hint" style="font-size:14px">{{ row.decision.reasons|join(" · ") }}</div>
+          {% if row.kind == "lodging" %}
+          <form method="post" action="{{ base }}/receipts/{{ row.receipt.receipt_id|urlencode }}" class="stack">
+            <input type="hidden" name="next" value="review">
+            <div class="grid2">
+              <div class="field"><label>실제 숙박일(체크인)</label><input class="input" type="date" name="service_date" value="{{ row.receipt.service_date or '' }}"></div>
+              <div class="field"><label>숙박 지역</label><input class="input" name="region" placeholder="예: 서울" value="{{ row.receipt.region or '' }}"></div>
+            </div>
+            <div class="row"><button class="btn btn--yellow btn--small" type="submit">숙박 정보 반영</button><a class="btn btn--plain btn--small" href="{{ base }}/extract?rid={{ row.receipt.receipt_id|urlencode }}">원본 보기</a></div>
+          </form>
+          {% elif row.kind == "taxi" %}
+          <form method="post" action="{{ base }}/resolve" class="row">
+            <input class="input" name="taxi_reason" placeholder="예: 심야 대중교통 종료" style="flex:1" value="{{ review.trip.taxi_reason or '' }}">
+            <button class="btn btn--yellow btn--small" type="submit">사유 저장</button>
+          </form>
+          {% elif row.kind == "grade" %}
+          <form method="post" action="{{ base }}/resolve" class="row">
+            <div class="seg" style="flex:1">
+              <label><input type="radio" name="grade" value="제1호"><span>제1호</span></label>
+              <label><input type="radio" name="grade" value="제2호"><span>제2호</span></label>
+            </div>
+            <button class="btn btn--yellow btn--small" type="submit">구분 저장</button>
+          </form>
+          {% elif row.kind == "period" %}
+          <form method="post" action="{{ base }}/resolve" class="stack">
+            <div class="grid2">
+              <div class="field"><label>출장 시작</label><input class="input" type="date" name="start_date" value="{{ review.trip.start_date or '' }}"></div>
+              <div class="field"><label>출장 종료</label><input class="input" type="date" name="end_date" value="{{ review.trip.end_date or '' }}"></div>
+            </div>
+            <input type="hidden" name="destination_region" value="{{ review.trip.destination_region or '' }}">
+            <button class="btn btn--yellow btn--small" type="submit">출장기간 확정</button>
+          </form>
+          {% else %}
+          <a class="btn btn--small" href="{{ base }}/extract?rid={{ row.receipt.receipt_id|urlencode if row.receipt else '' }}">읽은 값·원본 확인</a>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </section>
+      {% else %}
+      <section class="panel">
+        <div class="row"><span class="check" style="width:40px;height:40px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#08080C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg></span><h2 class="title">확인할 게 없어요</h2></div>
+        <div class="hint" style="font-size:15px">모든 항목이 규정대로 판정됐어요. 서류를 만들면 돼요.</div>
+      </section>
+      {% endif %}
+    </div>
+
+    <section class="panel" style="padding:0;overflow:hidden">
+      <div class="row row--between" style="padding:18px 24px;border-bottom:3px solid var(--ink);background:var(--white)">
+        <h2 class="title">지급대상 한눈에</h2><span class="hint">금액 단위 원</span>
+      </div>
+      <div class="table-wrap">
+      <table class="decisions">
+        <thead><tr><th>구분</th><th>내역</th><th>일자</th><th class="amount">청구</th><th class="amount">인정</th><th class="amount">판정</th></tr></thead>
+        <tbody>
+        {% for row in rows %}
+          {% set v = row.decision.verdict.value %}
+          <tr class="{% if v == '확인필요' %}is-review{% endif %}">
+            <td style="font-weight:800;white-space:nowrap">{{ row.decision.item }}</td>
+            <td><div style="font-weight:600">{{ row.label }}</div><div class="basis">{{ row.decision.basis|join(" · ") or row.decision.reasons|join(" · ") }}</div></td>
+            <td style="white-space:nowrap">{{ row.day }}</td>
+            <td class="amount muted">{{ row.decision.claimed_amount|won if row.receipt else "—" }}</td>
+            <td class="amount" style="font-weight:800">{{ row.decision.approved_amount|won }}</td>
+            <td class="amount"><span class="chip {{ {'지급': 'chip--pay', '확인필요': 'chip--review', '감액지급': 'chip--reduced', '불인정': 'chip--denied'}[v] }}">{{ v }}</span></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+        <tfoot><tr><td class="title title--sm" style="font-weight:400">합계</td><td></td><td></td><td class="amount muted">{{ review.totals.claimed|won }}</td><td class="amount">{{ review.totals.approved|won }}</td><td></td></tr></tfoot>
+      </table>
+      </div>
+    </section>
+  </div>
+{% endif %}
+{% endblock %}
