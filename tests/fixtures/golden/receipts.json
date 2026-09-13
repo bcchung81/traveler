@@ -1,0 +1,8 @@
+[
+ {"receipt_id": "ktx1", "image_id": "ktx1", "category": "철도", "merchant": "한국철도공사", "business_no": "314-82-10024", "amount": 48200,
+  "paid_at": "2026-07-08T22:10:00", "service_date": "2026-07-09", "origin": "나주", "destination": "용산", "seat_class": "일반실", "train_no": "KTX-산천 424", "approval_no": "55431218"},
+ {"receipt_id": "ktx2", "image_id": "ktx2", "category": "철도", "merchant": "한국철도공사", "business_no": "314-82-10024", "amount": 48200,
+  "paid_at": "2026-06-11T08:31:00", "service_date": "2026-07-10", "origin": "용산", "destination": "나주", "seat_class": "일반실", "train_no": "KTX 433", "approval_no": "49243338"},
+ {"receipt_id": "stay", "image_id": "stay", "category": "숙박", "merchant": "(주)여기어때컴퍼니", "amount": 100000,
+  "paid_at": "2026-08-21T16:44:06", "approval_no": "68325420", "payer_name": "정백철", "warnings": ["MISSING_BIZNO"]}
+]
