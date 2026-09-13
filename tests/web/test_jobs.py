@@ -1,6 +1,7 @@
 # tests/web/test_jobs.py
 import threading, time
 import pytest
+from helpers import FakeProc
 from receipt_evidence.web.jobs import JobManager
 from receipt_evidence.web.vlm_process import VlmManager
 
@@ -29,18 +30,6 @@ def test_threaded_jobs_dedupe_running_key():
         assert jm.submit("t", "finalize", lambda: "new") is not j1
     finally:
         jm.shutdown()
-
-class FakeProc:
-    def __init__(self):
-        self.alive, self.terminated = True, False
-    def poll(self):
-        return None if self.alive else 0
-    def terminate(self):
-        self.alive, self.terminated = False, True
-    def wait(self, timeout=None):
-        return 0
-    def kill(self):
-        self.alive = False
 
 def test_vlm_manager_ensure_ready_starts_waits_and_stops(tmp_path):
     polls, started = {"n": 0}, []

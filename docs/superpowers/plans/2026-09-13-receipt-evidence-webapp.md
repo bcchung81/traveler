@@ -368,7 +368,7 @@ def web(tmp_path, law_fixture_text):
 ```
 ```python
 # tests/web/test_app.py
-from test_jobs import FakeProc
+from helpers import FakeProc
 
 def test_home_empty_and_vlm_badge(web):
     r = web.get("/")
@@ -387,8 +387,7 @@ def test_vlm_badge_states_and_no_start_button(web):
 def test_security_host_origin_and_paths(web):
     assert web.get("/", headers={"host": "evil.example"}).status_code == 400
     assert web.post("/new", data={}, headers={"origin": "http://evil.example"}).status_code == 403
-    assert web.post("/new", data={}, headers={"origin": "http://testserver"}).status_code == 400  # 출처는 통과, 필수값 없음
-    assert web.get("/t/.hidden/2026-07-09_서울/upload").status_code == 400
+    assert web.post("/new", data={}, headers={"origin": "http://testserver"}).status_code != 403  # 같은 출처는 통과
 ```
 - [ ] **Step 2: 실패 확인** — `ModuleNotFoundError: No module named 'receipt_evidence.web.app'`
 - [ ] **Step 3: 구현 요점** — `Jinja2Templates(directory=Path(__file__).parent / "templates")`, 필터 `won`(천 단위 콤마)·`kdate`. `StaticFiles` 마운트. `TrustedHostMiddleware(allowed_hosts=settings.allowed_hosts)`. POST·DELETE 요청에서 `Origin`이 있고 `f"{request.url.scheme}://{request.headers['host']}"`와 다르면 403인 미들웨어. `InvalidName` → 400, `FileNotFoundError`·`KeyError`·`LookupError` → 404 예외 핸들러. 홈은 `service.list_trips()`를 출장자별로 묶어 카드로 렌더링하고, 비었으면 "아직 출장이 없어요". `_vlm.html`(버튼 없음): ready "준비됨"(시안), starting "켜는 중" + `hx-get="/vlm" hx-trigger="every 3s" hx-swap="outerHTML"`, stopped "꺼짐 · 필요할 때 자동으로 켜요". `_steps.html` 매크로 `steps(active: int, done: set[int])`로 4패널을 그린다. htmx는 `curl -sfL https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js`로 받아 커밋한다.
@@ -445,6 +444,10 @@ def test_upload_add_delete_info_and_errors(web):
     assert web.deps.service.load_trip_yaml("정백철", "2026-07-09_서울")["end_date"] == date(2026, 7, 11)
     assert web.deps.service.load_trip_yaml("정백철", "2026-07-09_서울")["purpose"] == "회의"
 
+def test_bad_path_names_rejected(web):
+    assert web.get("/t/.hidden/2026-07-09_서울/upload").status_code == 400
+    assert web.post("/t/정백철/..%2Fx/files/delete", data={"name": "a.png"}).status_code in (400, 404)
+
 def test_extract_without_files_shows_message(web):
     web.deps.service.create_trip("정백철", date(2026, 7, 9), "서울")
     r = web.post(f"{BASE}/extract")
@@ -452,7 +455,7 @@ def test_extract_without_files_shows_message(web):
 ```
 - [ ] **Step 2: 실패 확인** — `404`/`AssertionError`
 - [ ] **Step 3: 구현 요점** — `POST /new`: `traveler`·`start_date`·`destination_region` 필수(없으면 400). `create_trip` → 프로필 키는 `save_profile`, 출장 키는 `save_trip_yaml` → `save_files` → 303. `/info`는 폼에 **있는 키만** 저장(없는 키는 기존값 유지). `/extract`는 파일이 0개면 `upload?error=nofiles`로, 있으면 `jobs.submit(key, "extract", lambda: do_extract(...))` 후 `…/extract`로 303. 템플릿은 Upload.dc.html 구성(드롭존 `<input type=file multiple name=files>` + 올린 파일 목록과 삭제 버튼, 출장 정보 폼, 로컬 처리 안내)을 따른다.
-- [ ] **Step 4: 통과 확인** — `uv run pytest tests/web/test_upload.py` → `3 passed`
+- [ ] **Step 4: 통과 확인** — `uv run pytest tests/web/test_upload.py` → `4 passed`
 - [ ] **Step 5: 커밋** — `feat: 웹앱 1화면(새 정산·영수증 올리기·출장 정보)`
 
 ---

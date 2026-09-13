@@ -1,0 +1,7 @@
+{% if vlm_status == "ready" %}
+<span id="vlm-status" class="vlm vlm--ready" title="로컬 AI(llama-server)가 켜져 있어요">로컬 AI 준비됨</span>
+{% elif vlm_status == "starting" %}
+<span id="vlm-status" class="vlm vlm--starting" hx-get="/vlm" hx-trigger="every 3s" hx-swap="outerHTML">로컬 AI 켜는 중…</span>
+{% else %}
+<span id="vlm-status" class="vlm vlm--stopped" title="영수증을 새로 읽을 때만 켜고, 다 읽으면 꺼요">로컬 AI 꺼짐 · 필요할 때 자동으로 켜요</span>
+{% endif %}

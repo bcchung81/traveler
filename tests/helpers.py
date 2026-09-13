@@ -60,3 +60,15 @@ def doc_fake(fail_on: str | None = None, render: bool = False) -> FakeToolCaller
 def rail(n: int, day: date, o: str, d: str) -> dict:
     return spec("철도", 48200, f"7{n:07d}", merchant="한국철도공사", business_no="314-82-10024", service_date=day.isoformat(),
                 paid_at=f"{day.isoformat()} 09:00", origin=o, destination=d, seat_class="일반실", train_no=f"KTX {100 + n}")
+
+class FakeProc:
+    def __init__(self):
+        self.alive, self.terminated = True, False
+    def poll(self):
+        return None if self.alive else 0
+    def terminate(self):
+        self.alive, self.terminated = False, True
+    def wait(self, timeout=None):
+        return 0
+    def kill(self):
+        self.alive = False

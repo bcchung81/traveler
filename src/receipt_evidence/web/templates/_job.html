@@ -1,0 +1,9 @@
+<section class="panel" id="job" hx-get="{{ base }}/job" hx-trigger="every 2s" hx-swap="outerHTML">
+  <div class="progress">
+    <span class="spinner" aria-hidden="true"></span>
+    <div class="stack">
+      <h2 class="title">{{ job_title }}</h2>
+      <div class="hint">{{ job_hint }}</div>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,36 @@
+{% macro icon(n, state) -%}
+{% set stroke = "#08080C" if state != "future" else "rgba(8,8,12,0.4)" %}
+{% set fill = "#FFFFFF" if state != "future" else "none" %}
+{% if n == 1 -%}
+<svg width="70" height="80" viewBox="0 0 84 96" fill="none" stroke="{{ stroke }}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4h64v84l-8-6-8 6-8-6-8 6-8-6-8 6-8-6z" fill="{{ fill }}"></path><path d="M22 24h40"></path><path d="M22 38h28"></path><path d="M22 52h40"></path><path d="M46 66h16" stroke="{{ '#FF7A2F' if state != 'future' else stroke }}" stroke-width="5"></path></svg>
+{%- elif n == 2 -%}
+<svg width="80" height="70" viewBox="0 0 96 84" fill="none" stroke="{{ stroke }}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="10" width="80" height="64" rx="8" fill="{{ fill }}"></rect><circle cx="48" cy="42" r="16"></circle><path d="M60 54l14 14" stroke-width="5"></path><path d="M40 42h16" stroke="{{ '#2FF0E6' if state != 'future' else stroke }}" stroke-width="5"></path></svg>
+{%- elif n == 3 -%}
+<svg width="80" height="70" viewBox="0 0 96 84" fill="none" stroke="{{ stroke }}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M48 8v68"></path><path d="M28 76h40"></path><path d="M14 20h68"></path><path d="M14 20L4 46h20z" fill="{{ fill }}"></path><path d="M82 20l-10 26h20z" fill="{{ fill }}"></path></svg>
+{%- else -%}
+<svg width="64" height="80" viewBox="0 0 76 96" fill="none" stroke="{{ stroke }}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h44l20 20v68H6z" fill="{{ fill }}"></path><path d="M50 4v20h20"></path><path d="M18 46h40"></path><path d="M18 58h40"></path><path d="M18 70h24" stroke="{{ '#FF7A2F' if state != 'future' else stroke }}" stroke-width="5"></path></svg>
+{%- endif %}
+{%- endmacro %}
+
+{% macro steps(base, active, done=(), subs={}) %}
+<section class="steps" aria-label="진행 단계">
+{% set items = [(1, "영수증 올리기", "upload", "사진·스크린샷·PDF 모두 괜찮아요"), (2, "읽은 값 확인", "extract", "로컬 AI가 읽은 값을 확인해요"), (3, "지급 판정", "review", "공무원 여비 규정으로 가려요"), (4, "서류 만들기", "result", "HWPX 증빙내역서 + 붙임")] %}
+{% for n, title, path, sub in items %}
+  {% set state = "current" if n == active else ("done" if n in done else "future") %}
+  {% set tag = "a" if base and (state != "future" or n == active + 1) else "div" %}
+  <{{ tag }} class="step step--{{ state }}"{% if tag == "a" %} href="{{ base }}/{{ path }}"{% endif %}>
+    <div class="step__top">
+      <div class="stack">
+        <span class="step__num">0{{ n }}</span>
+        {% if state == "done" %}<span class="check" aria-label="완료"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#08080C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg></span>{% endif %}
+      </div>
+      {{ icon(n, state) }}
+    </div>
+    <div>
+      <div class="step__title">{{ title }}</div>
+      <div class="step__sub">{{ subs.get(n, sub) }}</div>
+    </div>
+  </{{ tag }}>
+{% endfor %}
+</section>
+{% endmacro %}

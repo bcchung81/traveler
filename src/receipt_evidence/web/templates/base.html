@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}여비정산 증빙{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&amp;family=Do+Hyeon&amp;family=Gothic+A1:wght@400;600;800&amp;display=swap">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <header class="head">
+    <div class="head__left">
+      <a class="brand" href="/">여비정산 증빙</a>
+      <span class="head__meta">{% block meta %}{% endblock %}</span>
+    </div>
+    <div class="head__right">
+      {% include "_vlm.html" %}
+      {% block cta %}{% endblock %}
+    </div>
+  </header>
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>

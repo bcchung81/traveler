@@ -49,3 +49,11 @@ class VlmManager:
             proc.wait(timeout=10)
         except Exception:
             proc.kill()
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+def default_vlm_manager(vlm_url: str = "http://127.0.0.1:8088") -> VlmManager:
+    """scripts/start_vlm.sh 로 필요할 때만 띄우는 기본 관리자. 상태 확인은 짧은 타임아웃으로."""
+    from ..vlm import LlamaServerClient
+    health = LlamaServerClient(vlm_url, timeout=2.0).healthy
+    return VlmManager(health=health, start_cmd=["bash", str(PROJECT_ROOT / "scripts" / "start_vlm.sh")], cwd=PROJECT_ROOT)

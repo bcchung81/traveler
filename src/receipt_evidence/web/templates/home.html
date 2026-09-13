@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block meta %}{% if trips %}출장 {{ trips|length }}건 · 출장자 {{ groups|length }}명{% else %}영수증을 올려 여비 정산을 시작하세요{% endif %}{% endblock %}
+{% block cta %}<a class="cta" href="/new">새 정산 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg></a>{% endblock %}
+{% block content %}
+{% if not groups %}
+<section class="panel empty">
+  <h1 class="title title--lg">아직 출장이 없어요</h1>
+  <p class="muted" style="margin:0;font-size:16px;font-weight:600;line-height:1.7">출장 한 건마다 영수증(사진·스크린샷·PDF)을 올리면, 로컬 AI가 읽고 공무원 여비 규정으로 판정해 HWPX 증빙내역서를 만들어요.</p>
+  <a class="cta" href="/new">새 정산 시작</a>
+</section>
+{% else %}
+{% for traveler, items in groups %}
+<section class="traveler">
+  <h2 class="title">{{ traveler }}</h2>
+  <div class="trip-grid">
+  {% for t in items %}
+    {% set page = {"empty": "upload", "uploaded": "upload", "extracted": "review", "documented": "result"}[t.stage] %}
+    {% set label = {"empty": "영수증 없음", "uploaded": "읽기 전", "extracted": "판정 전", "documented": "서류 완성"}[t.stage] %}
+    <a class="panel trip-card" href="/t/{{ t.traveler|urlencode }}/{{ t.trip_id|urlencode }}/{{ page }}">
+      {% if t.review_count %}<span class="sticker sticker--right">확인필요 {{ t.review_count }}</span>{% endif %}
+      <div class="stack">
+        <div class="trip-card__id">{{ t.trip_id }}</div>
+        <div class="hint">{{ t.start_date|kdate }}{% if t.end_date %}~{{ t.end_date|kdate }}{% endif %} · 영수증 {{ t.files }}건{% if t.proposed %} · 출장 정보 미확정{% endif %}</div>
+      </div>
+      <div class="row">
+        <span class="chip chip--stage">{{ label }}</span>
+        {% if t.version %}<span class="chip">v{{ t.version }}</span>{% endif %}
+        {% if t.stale %}<span class="chip chip--reduced">파일 바뀜</span>{% endif %}
+        {% if t.verify_ok %}<span class="chip chip--ok">합계 검증 통과</span>{% endif %}
+      </div>
+      <div class="row">
+        <span class="num trip-card__amount">{{ t.approved|won }}</span><span class="title title--sm">원 인정</span>
+      </div>
+    </a>
+  {% endfor %}
+  </div>
+</section>
+{% endfor %}
+{% endif %}
+{% endblock %}
