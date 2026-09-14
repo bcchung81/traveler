@@ -150,38 +150,101 @@ def decide_receipt(r: Receipt, trip: TripConfig, law: LawSnapshot) -> Decision:
     rt = law.rate_tables[trip.grade or "제2호"]
     return RULES.get(r.category, _unknown)(r, trip, law, rt, item, amt)
 
+ALLOWANCE_ITEMS = ("일비", "식비", "근무지 내 출장 여비")
+
+def _nonneg_int(v: object) -> int | None:
+    try:
+        n = int(str(v).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
+    return n if n >= 0 else None
+
+def _manual_allowance(row: Decision, trip: TripConfig, unit: int | None, planned: int | None) -> Decision:
+    """trip.yaml allowance_decisions의 담당자 정액 판정: 인정 일수(일액×일수) 또는 금액, 사유 필수. 원래 규정 판정은 manual에 남긴다."""
+    spec = trip.allowance_decisions.get(row.item)
+    if not spec:
+        return row
+    if not isinstance(spec, dict):
+        return _manual_error(row, "형식")
+    reason = str(spec.get("reason") or "").strip()
+    if not reason:
+        return _manual_error(row, "사유 없음")
+    days = None
+    if spec.get("amount") not in (None, ""):
+        approved = _nonneg_int(spec.get("amount"))
+        if approved is None:
+            return _manual_error(row, "금액은 0 이상의 정수")
+    elif spec.get("days") not in (None, ""):
+        if row.item == "근무지 내 출장 여비":
+            return _manual_error(row, "근무지 내 출장 여비는 금액으로만 조정")
+        days = _nonneg_int(spec.get("days"))
+        if days is None:
+            return _manual_error(row, "인정 일수는 0 이상의 정수")
+        if unit is None:
+            return _manual_error(row, "일액을 계산할 수 없어 금액으로 조정 필요")
+        approved = unit * days
+    else:
+        return _manual_error(row, "인정 일수나 금액이 없음")
+    verdict = Verdict.DENIED if approved == 0 else (Verdict.REDUCED if planned is not None and approved < planned else Verdict.PAY)
+    over = row.verdict is not Verdict.REVIEW and approved > row.approved_amount
+    calc = f"{unit:,}×{days}일" if days is not None else f"{approved:,}원 지정"
+    manual = ManualDecision(verdict=verdict, approved_amount=approved, reason=reason, rule_verdict=row.verdict,
+                            rule_approved=row.approved_amount, over_rule=over, days=days)
+    reasons = [f"담당자 판정: {calc} · {reason} (규정상 {row.verdict.value} {row.approved_amount:,}원)"] + (["규정 한도를 넘는 인정"] if over else []) + row.reasons
+    return row.model_copy(update={"verdict": verdict, "approved_amount": approved, "basis": ["담당자 판정"] + row.basis, "reasons": reasons, "manual": manual})
+
+def allowance_units(trip: TripConfig, law: LawSnapshot) -> dict[str, int | None]:
+    """담당자가 인정 일수로 고칠 때 쓰는 일액(일비는 공용차량이면 비율 반영). 근무지 내 출장 여비는 일수 조정 대상이 아니다."""
+    rt, p = law.rate_tables[trip.grade or "제2호"], law.params
+    ratio = p.vehicle_daily_ratio if trip.official_vehicle else (1, 1)
+    return {"일비": rt.daily_allowance * ratio[0] // ratio[1] if ratio else None, "식비": rt.meal_allowance, "근무지 내 출장 여비": None}
+
 def allowance_rows(trip: TripConfig, law: LawSnapshot) -> list[Decision]:
+    """정액 여비. 여행일수=시작일~종료일 포함(제16조제3항·제5항). 확정 전(자동 제안 기간)은 기간 근거가 확실할 때만 지급한다."""
     rt = law.rate_tables[trip.grade or "제2호"]
     mk = lambda item, appr, v, basis, reasons: Decision(receipt_id=None, item=item, claimed_amount=0, approved_amount=appr, verdict=v, basis=basis, reasons=reasons)
     p = law.params
     if trip.within_workplace:
+        item = "근무지 내 출장 여비"
         if trip.duration_hours is None:
-            return [mk("근무지 내 출장 여비", 0, Verdict.REVIEW, ["제18조"], ["출장 시간(duration_hours) 미입력"])]
+            return [_manual_allowance(mk(item, 0, Verdict.REVIEW, ["제18조"], ["출장 시간(duration_hours) 미입력"]), trip, None, None)]
         needed = (p.in_city_hours, p.in_city_long, p.in_city_short) + ((p.in_city_vehicle_cut,) if trip.official_vehicle else ())
         if any(v is None for v in needed):
-            return [mk("근무지 내 출장 여비", 0, Verdict.REVIEW, ["제18조"], ["제18조 금액 문구를 읽지 못함(규정 개정 가능성) — 지급액 확인 필요"])]
-        amt = (p.in_city_long if trip.duration_hours >= p.in_city_hours else p.in_city_short) - (p.in_city_vehicle_cut if trip.official_vehicle else 0)
-        return [mk("근무지 내 출장 여비", max(amt, 0), Verdict.PAY, ["제18조"], [f"{trip.duration_hours}시간, 공용차량 {'이용' if trip.official_vehicle else '미이용'}"])]
-    days = trip.days
-    if days is None:
-        return [mk("일비", 0, Verdict.REVIEW, ["별표2", "제16조제3항"], ["출장기간 미입력"]), mk("식비", 0, Verdict.REVIEW, ["별표2", "제16조제5항"], ["출장기간 미입력"])]
+            return [_manual_allowance(mk(item, 0, Verdict.REVIEW, ["제18조"], ["제18조 금액 문구를 읽지 못함(규정 개정 가능성) — 지급액 확인 필요"]), trip, None, None)]
+        amt = max((p.in_city_long if trip.duration_hours >= p.in_city_hours else p.in_city_short) - (p.in_city_vehicle_cut if trip.official_vehicle else 0), 0)
+        row = mk(item, amt, Verdict.PAY, ["제18조"], [f"{trip.duration_hours}시간, 공용차량 {'이용' if trip.official_vehicle else '미이용'}"])
+        return [_manual_allowance(row, trip, None, amt)]
+    daily_basis, meal_basis = ["별표2", "제16조제3항"], ["별표2", "제16조제5항"]
     ratio = p.vehicle_daily_ratio if trip.official_vehicle else (1, 1)
+    daily_unit = rt.daily_allowance * ratio[0] // ratio[1] if ratio else None
+    days = trip.days
+    if days is None or days < 1:
+        why = "출장기간 미입력" if days is None else f"출장기간 종료일({trip.end_date})이 시작일({trip.start_date})보다 빠름 — 기간 확인 필요"
+        return [_manual_allowance(mk("일비", 0, Verdict.REVIEW, daily_basis, [why]), trip, daily_unit, None),
+                _manual_allowance(mk("식비", 0, Verdict.REVIEW, meal_basis, [why]), trip, rt.meal_allowance, None)]
     meal = rt.meal_allowance * days
     meal_note = f"{rt.meal_allowance:,}×{days}일"
-    if ratio is None:
-        return [mk("일비", 0, Verdict.REVIEW, ["별표2", "제16조제3항"], ["제16조제3항 공용차량 일비 비율 문구를 읽지 못함 — 확인 필요"]),
-                mk("식비", meal, Verdict.PAY, ["별표2", "제16조제5항"], [meal_note])]
-    daily = rt.daily_allowance * days * ratio[0] // ratio[1]
-    daily_note = f"{rt.daily_allowance:,}×{days}일" + (f" ×{ratio[0]}/{ratio[1]}(공용차량)" if trip.official_vehicle else "")
-    if trip.proposed:
-        note = "출장기간이 자동 제안값 — trip.yaml로 확정 필요"
-        return [mk("일비", 0, Verdict.REVIEW, ["별표2", "제16조제3항"], [f"{daily_note} = {daily:,} 예정", note]),
-                mk("식비", 0, Verdict.REVIEW, ["별표2", "제16조제5항"], [f"{meal_note} = {meal:,} 예정", note])]
-    return [mk("일비", daily, Verdict.PAY, ["별표2", "제16조제3항"], [daily_note]),
-            mk("식비", meal, Verdict.PAY, ["별표2", "제16조제5항"], [meal_note])]
+    daily = rt.daily_allowance * days * ratio[0] // ratio[1] if ratio else None
+    daily_note = f"{rt.daily_allowance:,}×{days}일" + (f" ×{ratio[0]}/{ratio[1]}(공용차량)" if trip.official_vehicle and ratio else "")
+    if trip.proposed and not trip.period_reliable:
+        note = "출장기간이 자동 제안값(근거 부족: 왕복 교통이나 숙박 체크인·체크아웃 없음) — 출장 정보 확인 카드에서 확정 필요"
+        daily_row = (mk("일비", 0, Verdict.REVIEW, daily_basis, [f"{daily_note} = {daily:,} 예정", note]) if daily is not None
+                     else mk("일비", 0, Verdict.REVIEW, daily_basis, ["제16조제3항 공용차량 일비 비율 문구를 읽지 못함 — 확인 필요", note]))
+        return [_manual_allowance(daily_row, trip, daily_unit, daily),
+                _manual_allowance(mk("식비", 0, Verdict.REVIEW, meal_basis, [f"{meal_note} = {meal:,} 예정", note]), trip, rt.meal_allowance, meal)]
+    extra = ["자동 제안 기간(영수증 근거) 기준 — 출장 정보 확인 카드에서 확정 권장"] if trip.proposed else []
+    daily_row = (mk("일비", daily, Verdict.PAY, daily_basis, [daily_note] + extra) if daily is not None
+                 else mk("일비", 0, Verdict.REVIEW, daily_basis, ["제16조제3항 공용차량 일비 비율 문구를 읽지 못함 — 확인 필요"]))
+    return [_manual_allowance(daily_row, trip, daily_unit, daily),
+            _manual_allowance(mk("식비", meal, Verdict.PAY, meal_basis, [meal_note] + extra), trip, rt.meal_allowance, meal)]
 
 def decide_all(receipts: list[Receipt], trip: TripConfig, law: LawSnapshot) -> list[Decision]:
-    return [decide_receipt(r, trip, law) for r in receipts] + allowance_rows(trip, law)
+    rows = allowance_rows(trip, law)
+    transport = {r.category for r in receipts if r.category in (Category.RAIL, Category.BUS, Category.AIR, Category.TAXI)} - {Category.TAXI}
+    if transport == {Category.AIR}:  # 제16조제5항 단서: 항공(수로)여행은 따로 식비가 필요한 경우에만 — 판정은 두고 안내만
+        rows = [r.model_copy(update={"reasons": r.reasons + ["제16조제5항 단서: 항공여행은 따로 식비가 필요한 경우에만 지급 — 확인 권장"]})
+                if r.item == "식비" else r for r in rows]
+    return [decide_receipt(r, trip, law) for r in receipts] + rows
 
 def _add_warnings(r: Receipt, codes: set[str]) -> Receipt:
     new = [c for c in sorted(codes) if c not in r.warnings]

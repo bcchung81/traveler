@@ -18,6 +18,7 @@ from ..workspace import (STAGING_PREFIX, TRIP_DIR_RE, TRIP_YAML_FIELDS, HashCach
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024
 PROFILE_FIELDS = ("position", "grade", "org", "dept", "workplace_region", "approval")
 GRADES = ("제1호", "제2호")
+ALLOWANCE_SLUGS = {"daily": "일비", "meal": "식비", "incity": "근무지 내 출장 여비"}  # 주소·화면 id용(한글·공백 없이)
 DEFAULT_GRADE = "제2호"  # 새 출장자 기본값(일반 공무원·직원). 확인 카드에서 바꿀 수 있다
 CONFIRM_TRIP_FIELDS = ("start_date", "end_date", "destination_region", "route_stations", "lodging_region")
 IMAGE_ID_RE = re.compile(r"^[0-9a-f]{12}-p\d+$")
@@ -342,6 +343,47 @@ class TripService:
             data[receipt_id] = entry
         else:
             data.pop(receipt_id, None)
+        if data:
+            _yaml_dump(path, data)
+        elif path.exists():
+            path.unlink()
+
+    def save_allowance_decision(self, traveler: str, trip_id: str, slug: str, mode: str, days: object = "", amount: object = "",
+                                reason: str = "") -> None:
+        """담당자 정액 판정(trip.yaml allowance_decisions): 규정대로(삭제)·일수·금액·불인정. 사유 필수, 근무지 내 출장 여비는 금액만."""
+        item = ALLOWANCE_SLUGS.get(slug)
+        if item is None:
+            raise NotFound(f"정액 항목 {slug}")
+        path = self.trip_dir(traveler, trip_id) / "trip.yaml"
+        data = _yaml_load(path)
+        decisions = dict(data.get("allowance_decisions") or {})
+        mode = nfc(str(mode or "")).strip()
+        if mode in ("", "규정대로"):
+            decisions.pop(item, None)
+        else:
+            text = nfc(str(reason or "")).strip()
+            if mode not in ("일수", "금액", "불인정"):
+                raise ValueError("판정은 규정대로·인정 일수·금액 지정·불인정 중 하나여야 해요")
+            if not text:
+                raise ValueError("판정을 바꾼 사유를 적어 주세요")
+            if mode == "일수":
+                if item == "근무지 내 출장 여비":
+                    raise ValueError("근무지 내 출장 여비는 금액으로만 고칠 수 있어요")
+                raw = str(days or "").strip()
+                if not re.fullmatch(r"\d{1,3}", raw):
+                    raise ValueError("인정 일수는 0 이상의 정수로 적어 주세요")
+                decisions[item] = {"days": int(raw), "reason": text}
+            elif mode == "금액":
+                digits = re.sub(r"[^\d]", "", str(amount or ""))
+                if not digits:
+                    raise ValueError("인정 금액을 적어 주세요")
+                decisions[item] = {"amount": int(digits), "reason": text}
+            else:
+                decisions[item] = {"amount": 0, "reason": text}
+        if decisions:
+            data["allowance_decisions"] = decisions
+        else:
+            data.pop("allowance_decisions", None)
         if data:
             _yaml_dump(path, data)
         elif path.exists():

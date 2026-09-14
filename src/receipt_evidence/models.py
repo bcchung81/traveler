@@ -115,6 +115,8 @@ class TripConfig(BaseModel):
     template_fields: dict[str, str] = Field(default_factory=dict)
     proposed: bool = False
     proposal_basis: list[str] = Field(default_factory=list)
+    period_reliable: bool = False  # 자동 제안 기간의 근거가 확실함(왕복 교통 또는 숙박 체크인·체크아웃)
+    allowance_decisions: dict[str, dict] = Field(default_factory=dict)  # 담당자 정액 판정 {일비|식비|근무지 내 출장 여비: {days|amount, reason}}
 
     @property
     def days(self) -> int | None:
@@ -133,6 +135,7 @@ class ManualDecision(BaseModel):
     rule_verdict: Verdict
     rule_approved: int
     over_rule: bool = False  # 규정이 계산한 인정액보다 많이 인정함
+    days: int | None = None  # 정액 행을 인정 일수로 고친 경우
 
 class Decision(BaseModel):
     receipt_id: str | None

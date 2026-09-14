@@ -10,3 +10,11 @@ taxi_reason: null         # 택시 이용 사유
 official_vehicle: false
 within_workplace: false
 duration_hours: null
+# 담당자 정액 판정(선택): 인정 일수(days) 또는 금액(amount), 사유 필수. 규정 계산값은 서류의 담당자 판정 내역에 함께 남는다
+# allowance_decisions:
+#   식비:
+#     amount: 30000
+#     reason: 둘째 날 교육기관 중식·석식 제공
+#   일비:
+#     days: 1
+#     reason: 첫날 오후만 출장

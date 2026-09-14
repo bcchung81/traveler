@@ -9,10 +9,20 @@ from .rules import RULES_VERSION, totals
 _RECEIPT_FIELDS = {"receipt_id", "sha256", "category", "merchant", "business_no", "amount", "paid_at", "service_date", "service_end_date",
                    "origin", "destination", "seat_class", "train_no", "approval_no", "region", "nights", "warnings"}
 
+_NEW_TRIP_DEFAULTS = {"period_reliable": False, "allowance_decisions": {}}
+
+def _trip_payload(trip: TripConfig) -> dict:
+    """나중에 더한 필드는 기본값이면 빼서, 그 필드가 생기기 전에 만든 문서의 지문과 같게 둔다."""
+    data = trip.model_dump(mode="json")
+    for key, default in _NEW_TRIP_DEFAULTS.items():
+        if data.get(key) == default:
+            data.pop(key, None)
+    return data
+
 def fingerprint(receipts: list[Receipt], trip: TripConfig, law: LawSnapshot, manual: list[tuple] | None = None) -> str:
     payload = {
         "receipts": sorted((r.model_dump(mode="json", include=_RECEIPT_FIELDS) for r in receipts), key=lambda d: d["receipt_id"]),
-        "trip": trip.model_dump(mode="json"),
+        "trip": _trip_payload(trip),
         "law": [law.mst, law.effective.isoformat()],
         "rules": RULES_VERSION,
         "report": REPORT_VERSION,

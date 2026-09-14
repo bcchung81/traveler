@@ -191,3 +191,15 @@ def test_trip_yaml_without_period_keeps_proposal(tmp_path):
     (trip_dir / "trip.yaml").write_text("purpose: 회의\nstart_date: 2026-07-09\nend_date: 2026-07-11\n", encoding="utf-8")
     t = resolve_trip(job, load_traveler(trav), rs)
     assert not t.proposed and t.end_date == date(2026, 7, 11)
+
+def test_period_reliable_needs_round_trip_or_full_stay():
+    out_leg, back_leg = _leg("a", date(2026, 7, 9), "나주", "용산"), _leg("b", date(2026, 7, 10), "용산", "나주")
+    base = {"traveler_name": "정백철", "trip_id": "x"}
+    assert propose_trip("_새정산-x", [out_leg, back_leg], base).period_reliable  # 가는 편·오는 편
+    assert not propose_trip("_새정산-x", [out_leg], base).period_reliable  # 한쪽 표만
+    assert not propose_trip("2026-07-09_서울", [], base).period_reliable  # 폴더 날짜만
+    stay = Receipt(receipt_id="s", image_id="s", category=Category.LODGING, amount=90000, service_date=date(2026, 7, 9), service_end_date=date(2026, 7, 10))
+    assert propose_trip("_새정산-x", [out_leg, stay], base).period_reliable  # 숙박 체크인·체크아웃
+    assert not propose_trip("_새정산-x", [stay.model_copy(update={"service_end_date": None})], base).period_reliable
+    assert propose_trip("_새정산-x", [_leg("r", date(2026, 7, 10), "용산", "나주"), _leg("o", date(2026, 7, 9), "나주", "용산")],
+                        base | {"workplace_region": "나주"}).period_reliable

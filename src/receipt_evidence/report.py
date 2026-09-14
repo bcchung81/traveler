@@ -87,7 +87,7 @@ def build_markdown(trip: TripConfig, law: LawSnapshot, receipts: list[Receipt], 
     md += [f"- {d.item}({d.receipt_id or '정액'}): {'; '.join(d.reasons)}" for d in reviews] or ["- 없음"]
     if manual:
         md += ["", "## 담당자 판정 내역"]
-        md += [f"- {d.item}({d.receipt_id}): 규정상 {d.manual.rule_verdict.value} {fmt_won(d.manual.rule_approved)} → {d.verdict.value} {fmt_won(d.approved_amount)}"
+        md += [f"- {d.item}({d.receipt_id or '정액'}): 규정상 {d.manual.rule_verdict.value} {fmt_won(d.manual.rule_approved)} → {d.verdict.value} {fmt_won(d.approved_amount)}"
                f" · 사유: {d.manual.reason}" + (" [규정 한도 초과 인정]" if d.manual.over_rule else "") for d in manual]
     md += ["", "## 붙임"]
     for d in ordered:

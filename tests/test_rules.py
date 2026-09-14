@@ -172,3 +172,48 @@ def test_invalid_manual_decisions_keep_rule(trip, law_snapshot):
     for rid in ("ktx1", "ktx2", "stay"):
         assert out[rid].manual is None and "담당자 판정 형식 오류" in out[rid].reasons[-1]
     assert out["ktx1"].verdict is Verdict.PAY and out["stay"].verdict is Verdict.REVIEW and out["일비"].manual is None
+
+def _allow(rows):
+    return {r.item: r for r in rows}
+
+def test_allowances_for_proposed_trip_depend_on_period_evidence(trip, law_snapshot):
+    sure = _allow(allowance_rows(trip.model_copy(update={"proposed": True, "period_reliable": True}), law_snapshot))
+    assert sure["일비"].verdict is Verdict.PAY and sure["일비"].approved_amount == 50000 and sure["식비"].approved_amount == 50000
+    assert "25,000×2일" == sure["식비"].reasons[0] and "자동 제안 기간" in sure["식비"].reasons[1]
+    unsure = _allow(allowance_rows(trip.model_copy(update={"proposed": True}), law_snapshot))
+    assert unsure["일비"].verdict is Verdict.REVIEW and unsure["일비"].approved_amount == 0 and "50,000 예정" in unsure["일비"].reasons[0]
+    blank = law_snapshot.model_copy(update={"params": LawParams()})
+    both = _allow(allowance_rows(trip.model_copy(update={"proposed": True, "official_vehicle": True}), blank))
+    assert both["식비"].verdict is Verdict.REVIEW  # 공용차량 비율을 못 읽어도 확정 전 식비는 지급하지 않는다
+
+def test_allowances_reject_reversed_period(trip, law_snapshot):
+    rows = _allow(allowance_rows(trip.model_copy(update={"end_date": date(2026, 7, 8)}), law_snapshot))
+    assert rows["일비"].verdict is Verdict.REVIEW and rows["일비"].approved_amount == 0 and "종료일" in rows["일비"].reasons[0]
+
+def test_allowance_manual_decisions_by_days_or_amount(trip, law_snapshot):
+    t = trip.model_copy(update={"allowance_decisions": {"식비": {"days": 1, "reason": "둘째 날 교육기관 식사 제공"},
+                                                        "일비": {"amount": 60000, "reason": "기관장 승인"}}})
+    rows = _allow(allowance_rows(t, law_snapshot))
+    meal, daily = rows["식비"], rows["일비"]
+    assert meal.verdict is Verdict.REDUCED and meal.approved_amount == 25000 and meal.manual.days == 1 and not meal.manual.over_rule
+    assert meal.basis[0] == "담당자 판정" and "25,000×1일" in meal.reasons[0] and "규정상 지급 50,000원" in meal.reasons[0]
+    assert daily.verdict is Verdict.PAY and daily.approved_amount == 60000 and daily.manual.over_rule
+    zero = _allow(allowance_rows(trip.model_copy(update={"allowance_decisions": {"식비": {"amount": 0, "reason": "숙식 전액 제공"}}}), law_snapshot))
+    assert zero["식비"].verdict is Verdict.DENIED and zero["식비"].approved_amount == 0
+    bad = _allow(allowance_rows(trip.model_copy(update={"allowance_decisions": {"식비": {"days": 1}, "일비": {"days": -1, "reason": "x"}}}), law_snapshot))
+    assert bad["식비"].manual is None and "담당자 판정 형식 오류" in bad["식비"].reasons[-1] and bad["일비"].manual is None
+    proposed = _allow(allowance_rows(trip.model_copy(update={"proposed": True, "allowance_decisions": {"일비": {"days": 2, "reason": "기간 확인"}}}), law_snapshot))
+    assert proposed["일비"].verdict is Verdict.PAY and proposed["일비"].approved_amount == 50000 and not proposed["일비"].manual.over_rule
+
+def test_in_city_allowance_manual_amount_only(trip, law_snapshot):
+    t = trip.model_copy(update={"within_workplace": True, "duration_hours": 5, "allowance_decisions": {"근무지 내 출장 여비": {"amount": 10000, "reason": "오전만 출장"}}})
+    row = allowance_rows(t, law_snapshot)[0]
+    assert row.verdict is Verdict.REDUCED and row.approved_amount == 10000 and row.manual.rule_approved == 20000
+    t2 = t.model_copy(update={"allowance_decisions": {"근무지 내 출장 여비": {"days": 1, "reason": "x"}}})
+    assert "담당자 판정 형식 오류" in allowance_rows(t2, law_snapshot)[0].reasons[-1]
+
+def test_air_only_trip_meal_note(trip, law_snapshot):
+    air = Receipt(receipt_id="a", image_id="a", category=Category.AIR, amount=90000, service_date=date(2026, 7, 9), origin="김포", destination="제주")
+    meal = _allow(decide_all([air], trip, law_snapshot))["식비"]
+    assert meal.verdict is Verdict.PAY and any("제16조제5항 단서" in r for r in meal.reasons)
+    assert not any("단서" in r for r in _allow(decide_all([GOLD[0]], trip, law_snapshot))["식비"].reasons)

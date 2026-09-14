@@ -22,6 +22,10 @@
 {% elif review %}
   {% if error %}<div class="banner banner--error" role="alert">{{ error }}</div>{% endif %}
   {% for n in notices %}<div class="banner" role="status">{{ n }}</div>{% endfor %}
+  {% if review.trip.proposed %}
+  <div class="banner" role="status">출장 정보가 아직 자동 제안값이에요 — {% if review.trip.period_reliable %}왕복 교통·숙박 영수증이 있어 제안 기간으로 일비·식비를 계산했어요.{% else %}기간 근거가 부족해 일비·식비는 확정 후 지급돼요.{% endif %}
+    <a class="btn btn--small" href="{{ base }}/extract">출장 정보 확정하기</a></div>
+  {% endif %}
   {% if status.stale %}
   <div class="banner">파일이 바뀌었어요 — 새로 올린 영수증은 아직 판정에 없어요. 다시 읽은 뒤에 서류를 만들 수 있어요.
     <form method="post" action="{{ base }}/extract"><button class="btn btn--small" type="submit">다시 읽기</button></form>
@@ -66,9 +70,6 @@
       <section class="panel">
         <span class="sticker">잠깐, 확인!</span>
         <h2 class="title" style="margin-top:10px">확인이 필요한 {{ review_count }}건</h2>
-        {% if review.trip.proposed %}
-        <div class="banner">출장 정보가 자동 제안값이에요. 기간을 확정하면 일비·식비가 지급으로 바뀌어요.</div>
-        {% endif %}
         {% for row in rows if row.decision.verdict.value == "확인필요" %}
         <div class="resolve">
           <div style="font-weight:800">{{ row.label }}</div>
@@ -152,7 +153,8 @@
             <td style="font-weight:800;white-space:nowrap">{{ row.decision.item }}</td>
             {% set d = row.decision %}
             <td><div style="font-weight:600">{{ row.label }}</div><div class="basis">{{ d.basis|join(" · ") or d.reasons|join(" · ") }}</div>
-              {% if d.manual %}<div class="basis manual-note">사유: {{ d.manual.reason }} · 규정상 {{ d.manual.rule_verdict.value }} {{ d.manual.rule_approved|won }}원</div>{% endif %}
+              {% if not row.receipt %}<div class="basis calc">{{ d.reasons|join(" · ") }}</div>
+              {% elif d.manual %}<div class="basis manual-note">사유: {{ d.manual.reason }} · 규정상 {{ d.manual.rule_verdict.value }} {{ d.manual.rule_approved|won }}원</div>{% endif %}
               {% if row.receipt %}
               {% set rid = row.receipt.receipt_id %}
               <details class="manual" id="d-{{ rid }}"{% if edit == rid %} open{% endif %}>
@@ -178,6 +180,27 @@
                 </form>
                 {% endif %}
               </details>
+              {% elif row.slug %}
+              {% set modes = ["규정대로", "금액", "불인정"] if row.slug == "incity" else ["규정대로", "일수", "금액", "불인정"] %}
+              {% set cur = ("불인정" if d.manual.approved_amount == 0 else ("일수" if d.manual.days is not none else "금액")) if d.manual else "규정대로" %}
+              <details class="manual" id="a-{{ row.slug }}"{% if edit == row.slug %} open{% endif %}>
+                <summary>판정 바꾸기</summary>
+                <form method="post" action="{{ base }}/allowances/{{ row.slug }}/decision" class="stack" data-decision-form data-kind="allowance"
+                      data-unit="{{ row.unit if row.unit is not none else '' }}" data-label="{{ d.item }} · 정액">
+                  <div class="seg {{ 'seg--3' if modes|length == 3 else 'seg--4' }}">
+                    {% for value in modes %}
+                    <label><input type="radio" name="mode" value="{{ value }}" {% if cur == value %}checked{% endif %}><span>{{ {"일수": "인정 일수", "금액": "금액 지정"}.get(value, value) }}</span></label>
+                    {% endfor %}
+                  </div>
+                  <div class="grid2">
+                    {% if row.slug != "incity" %}<div class="field"><label for="days-{{ row.slug }}">인정 일수</label><input class="input input--num" id="days-{{ row.slug }}" name="days" inputmode="numeric" placeholder="예: 1" value="{{ d.manual.days if d.manual and d.manual.days is not none else (review.trip.days or '') }}"></div>{% endif %}
+                    <div class="field"><label for="amount-{{ row.slug }}">금액(원)</label><input class="input input--num" id="amount-{{ row.slug }}" name="amount" inputmode="numeric" placeholder="금액 지정일 때" value="{{ d.approved_amount if cur == '금액' else '' }}"></div>
+                  </div>
+                  <div class="field"><label for="why-{{ row.slug }}">사유 <span class="hint">· 규정대로가 아니면 필수</span></label><input class="input" id="why-{{ row.slug }}" name="reason" value="{{ d.manual.reason if d.manual else '' }}"></div>
+                  <div class="hint">{% if row.unit %}일액 {{ row.unit|won }}원 × 인정 일수. {% endif %}규정상 {{ (d.manual.rule_verdict if d.manual else d.verdict).value }} {{ (d.manual.rule_approved if d.manual else d.approved_amount)|won }}원. 식사를 제공받은 경우처럼 일수로 안 맞으면 금액을 지정해요.</div>
+                  <button class="btn btn--yellow btn--small" type="submit">판정 저장</button>
+                </form>
+              </details>
               {% endif %}
             </td>
             <td style="white-space:nowrap">{{ row.day }}</td>
@@ -201,7 +224,8 @@
       <h2 class="title title--sm" id="dd-title" style="margin-top:6px">판정 사유를 입력해 주세요</h2>
       <div class="hint" id="dd-target" style="font-weight:800;color:var(--ink)"></div>
       <div class="banner banner--error" id="dd-msg" role="alert"></div>
-      <div class="field" id="dd-amount-field" hidden><label for="dd-amount">감액 인정액(원)</label><input class="input input--num" id="dd-amount" inputmode="numeric"></div>
+      <div class="field" id="dd-days-field" hidden><label for="dd-days">인정 일수</label><input class="input input--num" id="dd-days" inputmode="numeric"></div>
+      <div class="field" id="dd-amount-field" hidden><label for="dd-amount" id="dd-amount-label">감액 인정액(원)</label><input class="input input--num" id="dd-amount" inputmode="numeric"></div>
       <div class="field"><label for="dd-reason">판정 사유 <span class="hint">· 서류의 담당자 판정 내역에 그대로 적혀요</span></label>
         <textarea class="input textarea" id="dd-reason" rows="3" placeholder="예: 체크인 7/9 확인(결제 메일에 숙박일 없음)"></textarea></div>
       <div class="row"><button class="btn btn--yellow" id="dd-save" value="save">사유 넣고 저장</button><button class="btn" value="cancel">취소</button></div>
@@ -211,15 +235,25 @@
   (function () {
     var dlg = document.getElementById("decision-dialog");
     if (!dlg || typeof dlg.showModal !== "function") return;  // 팝업을 못 쓰는 브라우저는 예전처럼 안내 화면으로
-    var msg = document.getElementById("dd-msg"), target = document.getElementById("dd-target"), amountField = document.getElementById("dd-amount-field");
-    var amount = document.getElementById("dd-amount"), reason = document.getElementById("dd-reason"), current = null;
-    var names = {"지급": "인정", "감액지급": "감액", "불인정": "불인정"};
-    function verdictOf(form) { var c = form.querySelector('input[name="verdict"]:checked'); return c ? c.value : "규정대로"; }
+    var $ = function (id) { return document.getElementById(id); };
+    var msg = $("dd-msg"), target = $("dd-target"), title = $("dd-title"), current = null;
+    var daysField = $("dd-days-field"), days = $("dd-days"), amountField = $("dd-amount-field"), amount = $("dd-amount"), amountLabel = $("dd-amount-label"), reason = $("dd-reason");
+    var names = {"지급": "인정", "감액지급": "감액", "불인정": "불인정", "일수": "인정 일수", "금액": "금액 지정"};
+    var isAllowance = function (form) { return form.dataset.kind === "allowance"; };
+    var amountInput = function (form) { return form.elements.approved_amount || form.elements.amount; };
+    function verdictOf(form) { var c = form.querySelector('input[name="verdict"]:checked, input[name="mode"]:checked'); return c ? c.value : "규정대로"; }
     function won(v) { var d = String(v || "").replace(/[^0-9]/g, ""); return d ? parseInt(d, 10) : 0; }
+    function needs(form) {
+      var v = verdictOf(form);
+      return {days: isAllowance(form) && v === "일수", amount: isAllowance(form) ? v === "금액" : v === "감액지급"};
+    }
     function problem(form) {
       var v = verdictOf(form);
       if (v === "규정대로") return null;
-      if (v === "감액지급") {
+      if (isAllowance(form)) {
+        if (v === "일수" && !/^[0-9]{1,3}$/.test(String(form.elements.days.value).trim())) return {msg: "인정 일수는 0 이상의 정수로 적어 주세요", field: "days"};
+        if (v === "금액" && !/[0-9]/.test(form.elements.amount.value)) return {msg: "인정 금액을 적어 주세요", field: "amount"};
+      } else if (v === "감액지급") {
         var claimed = parseInt(form.dataset.claimed, 10) || 0, a = won(form.elements.approved_amount.value);
         if (!(a > 0 && a < claimed)) return {msg: "감액 인정액은 0보다 크고 청구액 " + claimed.toLocaleString("ko-KR") + "원보다 작아야 해요", field: "amount"};
       }
@@ -228,15 +262,18 @@
     }
     function open(form, p) {
       current = form;
-      var needAmount = verdictOf(form) === "감액지급";
+      var n = needs(form);
       target.textContent = form.dataset.label + " → " + (names[verdictOf(form)] || "규정대로");
       msg.textContent = p.msg;
-      document.getElementById("dd-title").textContent = p.field === "amount" ? "감액 인정액을 확인해 주세요" : "판정 사유를 입력해 주세요";
-      amountField.hidden = !needAmount;
-      amount.value = form.elements.approved_amount.value;
+      title.textContent = p.field === "days" ? "인정 일수를 확인해 주세요" : p.field === "amount" ? (isAllowance(form) ? "금액을 확인해 주세요" : "감액 인정액을 확인해 주세요") : "판정 사유를 입력해 주세요";
+      amountLabel.textContent = isAllowance(form) ? "인정 금액(원)" : "감액 인정액(원)";
+      daysField.hidden = !n.days;
+      amountField.hidden = !n.amount;
+      if (form.elements.days) days.value = form.elements.days.value;
+      amount.value = amountInput(form).value;
       reason.value = form.elements.reason.value;
       if (!dlg.open) dlg.showModal();
-      (p.field === "amount" && needAmount ? amount : reason).focus();
+      (p.field === "days" && n.days ? days : p.field === "amount" && n.amount ? amount : reason).focus();
     }
     function send(form) {
       var btn = form.querySelector('button[type="submit"]');
@@ -251,7 +288,8 @@
             return;
           }
           btn.disabled = false;
-          open(form, {msg: res.data.error || "저장하지 못했어요", field: /감액/.test(res.data.error || "") ? "amount" : "reason"});
+          var e = res.data.error || "저장하지 못했어요";
+          open(form, {msg: e, field: /일수/.test(e) ? "days" : /금액|감액/.test(e) ? "amount" : "reason"});
         })
         .catch(function () { btn.disabled = false; open(form, {msg: "저장하지 못했어요. 잠시 뒤 다시 시도해 주세요", field: "reason"}); });
     }
@@ -262,13 +300,14 @@
         if (p) open(form, p); else send(form);
       });
     });
-    document.getElementById("dd-save").addEventListener("click", function (e) {
+    $("dd-save").addEventListener("click", function (e) {
       e.preventDefault();
       if (!current) return;
       current.elements.reason.value = reason.value;
-      if (!amountField.hidden) current.elements.approved_amount.value = amount.value;
+      if (!daysField.hidden && current.elements.days) current.elements.days.value = days.value;
+      if (!amountField.hidden) amountInput(current).value = amount.value;
       var p = problem(current);
-      if (p) { msg.textContent = p.msg; (p.field === "amount" ? amount : reason).focus(); return; }
+      if (p) { open(current, p); return; }
       dlg.close();
       send(current);
     });

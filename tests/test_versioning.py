@@ -42,3 +42,9 @@ def test_fingerprint_changes_only_when_manual_decisions_exist(trip, law_snapshot
     assert fingerprint(GOLD, trip, law_snapshot, manual=[]) == fp
     m1 = fingerprint(GOLD, trip, law_snapshot, manual=[("stay", "지급", 100000, "체크인 확인")])
     assert m1 != fp and m1 != fingerprint(GOLD, trip, law_snapshot, manual=[("stay", "지급", 100000, "다른 사유")])
+
+def test_fingerprint_ignores_new_trip_fields_at_default(trip, law_snapshot):
+    fp = fingerprint(GOLD, trip, law_snapshot)
+    assert fingerprint(GOLD, trip.model_copy(update={"period_reliable": False, "allowance_decisions": {}}), law_snapshot) == fp
+    assert fingerprint(GOLD, trip.model_copy(update={"allowance_decisions": {"식비": {"days": 1, "reason": "식사 제공"}}}), law_snapshot) != fp
+    assert fingerprint(GOLD, trip.model_copy(update={"period_reliable": True}), law_snapshot) != fp

@@ -44,3 +44,8 @@ def test_manual_decisions_section_and_over_rule_notice(trip, law_snapshot):
     assert "담당자 판정, " in detail
     plain = build_markdown(trip, law_snapshot, GOLD, decide_all(GOLD, trip, law_snapshot), {})
     assert "담당자 판정" not in plain  # 담당자 판정이 없으면 서류는 그대로
+
+def test_manual_allowance_listed_in_decision_section(trip, law_snapshot):
+    t = trip.model_copy(update={"allowance_decisions": {"식비": {"days": 1, "reason": "식사 제공"}}})
+    md = build_markdown(t, law_snapshot, GOLD, decide_all(GOLD, t, law_snapshot), {})
+    assert "- 식비(정액): 규정상 지급 50,000 → 감액지급 25,000 · 사유: 식사 제공" in md and "(None)" not in md

@@ -233,6 +233,18 @@ def register_extract(app: FastAPI, settings, deps, render, trip_base, see_other)
             return JSONResponse({"ok": True, "redirect": target})
         return see_other(target)
 
+    @app.post("/t/{traveler}/{trip_id}/allowances/{slug}/decision")
+    async def save_allowance_decision(request: Request, traveler: str, trip_id: str, slug: str):
+        status = existing(traveler, trip_id)
+        form = await request.form()
+        service.save_allowance_decision(status.traveler, status.trip_id, slug, str(form.get("mode", "")), form.get("days", ""),
+                                        form.get("amount", ""), str(form.get("reason", "")))
+        target = f"{trip_base(status.traveler, status.trip_id)}/review#a-{quote(slug, safe='')}"
+        if "application/json" in request.headers.get("accept", ""):
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"ok": True, "redirect": target})
+        return see_other(target)
+
     @app.get("/t/{traveler}/{trip_id}/image/{image_id}")
     def receipt_image(traveler: str, trip_id: str, image_id: str):
         status = existing(traveler, trip_id)
@@ -257,6 +269,8 @@ def resolve_kind(decision, receipt) -> str:
 
 def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) -> None:
     from ..pipeline import find_job, review_receipts
+    from ..rules import allowance_units
+    from .service import ALLOWANCE_SLUGS
     from ..report import order_decisions
     service, jobs = deps.service, deps.jobs
     existing = lambda traveler, trip_id: existing_trip(service, traveler, trip_id)
@@ -296,6 +310,8 @@ def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) 
                               law_error=job.message or "여비 규정을 준비하지 못했어요")))
         review = review_receipts(find_job(settings.data_dir, t, trip), receipts, book, service.file_owners())
         by_id = {r.receipt_id: r for r in review.receipts}
+        units = allowance_units(review.trip, review.law)
+        slug_of = {item: slug for slug, item in ALLOWANCE_SLUGS.items()}
         rows = []
         for d in order_decisions(review.decisions, review.receipts):
             r = by_id.get(d.receipt_id or "")
@@ -308,7 +324,8 @@ def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) 
                 day = (f"결제 {when.month}.{when.day}." if not r.service_date else f"{when.month}.{when.day}.") if when else "미상"
             over_cap = (r is not None and r.category is Category.LODGING and d.manual is None and d.verdict.value == "감액지급"
                         and not review.trip.over_cap_reason)
-            rows.append({"decision": d, "receipt": r, "label": label, "day": day, "kind": resolve_kind(d, r), "over_cap": over_cap})
+            rows.append({"decision": d, "receipt": r, "label": label, "day": day, "kind": resolve_kind(d, r), "over_cap": over_cap,
+                         "slug": slug_of.get(d.item) if r is None else None, "unit": units.get(d.item) if r is None else None})
         pay_count = sum(1 for d in review.decisions if d.verdict.value in ("지급", "감액지급"))
         saved, profile = service.load_trip_yaml(t, trip), service.load_profile(t)
         tr = review.trip

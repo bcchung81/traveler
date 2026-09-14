@@ -241,6 +241,23 @@ def suggest_trip(trip_id: str, receipts: list[Receipt], workplace: str = "") -> 
         out["payer_names"] = Suggestion(payers, "영수증 결제자")
     return out
 
+def period_evidence(receipts: list[Receipt], workplace: str = "") -> str | None:
+    """자동 제안 기간을 믿을 근거: 근무지(모르면 첫 출발지)에서 나가는 구간과 돌아오는 구간이 모두 있거나, 숙박 체크인·체크아웃이 모두 있음."""
+    legs = sorted((r for r in receipts if r.category in _TRANSPORT and r.service_date and r.origin and r.destination), key=lambda r: r.service_date)
+    if legs:
+        home = _place(workplace)[0] if workplace else _place(legs[0].origin)[0]
+        city = lambda x: _place(x)[0]
+        out = next((l for l in legs if city(l.origin) == home and city(l.destination) != home), None)
+        back = next((l for l in legs if out is not None and l is not out and l.service_date >= out.service_date
+                     and city(l.destination) == home and city(l.origin) != home), None)
+        if out and back:
+            return f"왕복 {_leg_label(out)} · {_leg_label(back)}"
+    stay = next((r for r in receipts if r.category is Category.LODGING and r.service_date and r.service_end_date
+                 and r.service_end_date > r.service_date), None)
+    if stay:
+        return f"숙박 {_md(stay.service_date)}~{_md(stay.service_end_date)}"
+    return None
+
 def propose_trip(trip_id: str, receipts: list[Receipt], base: dict) -> TripConfig:
     s = suggest_trip(trip_id, receipts, base.get("workplace_region") or "")
     basis: list[str] = []
@@ -250,7 +267,8 @@ def propose_trip(trip_id: str, receipts: list[Receipt], base: dict) -> TripConfi
     value = lambda k, default=None: s[k].value if k in s else default
     return TripConfig.model_validate(base | {
         "destination_region": value("destination_region", ""), "start_date": value("start_date"), "end_date": value("end_date"),
-        "route_stations": value("route_stations", []), "proposed": True, "proposal_basis": basis})
+        "route_stations": value("route_stations", []), "proposed": True, "proposal_basis": basis,
+        "period_reliable": bool("start_date" in s and "end_date" in s and period_evidence(receipts, base.get("workplace_region") or ""))})
 
 # ---- 임시 폴더·이름 바꾸기 ----
 
