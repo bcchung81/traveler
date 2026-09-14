@@ -246,7 +246,8 @@ def register_extract(app: FastAPI, settings, deps, render, trip_base, see_other)
         form = await request.form()
         service.save_decision(status.traveler, status.trip_id, rid, str(form.get("verdict", "")), form.get("approved_amount", ""),
                               str(form.get("reason", "")))
-        target = f"{trip_base(status.traveler, status.trip_id)}/review#d-{quote(rid, safe='')}"
+        anchor = f"d-{quote(rid, safe='')}"
+        target = f"{trip_base(status.traveler, status.trip_id)}/review?saved={anchor}#{anchor}"
         if "application/json" in request.headers.get("accept", ""):  # 화면 스크립트: 페이지 이동 없이 결과만
             from fastapi.responses import JSONResponse
             return JSONResponse({"ok": True, "redirect": target})
@@ -258,7 +259,8 @@ def register_extract(app: FastAPI, settings, deps, render, trip_base, see_other)
         form = await request.form()
         service.save_allowance_decision(status.traveler, status.trip_id, slug, str(form.get("mode", "")), form.get("days", ""),
                                         form.get("amount", ""), str(form.get("reason", "")))
-        target = f"{trip_base(status.traveler, status.trip_id)}/review#a-{quote(slug, safe='')}"
+        anchor = f"a-{quote(slug, safe='')}"
+        target = f"{trip_base(status.traveler, status.trip_id)}/review?saved={anchor}#{anchor}"
         if "application/json" in request.headers.get("accept", ""):
             from fastapi.responses import JSONResponse
             return JSONResponse({"ok": True, "redirect": target})
@@ -298,7 +300,7 @@ def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) 
         with deps.clients() as clients:
             return fn(clients)
 
-    empty = dict(review=None, rows=[], law=None, law_error=None, law_notes=[], notices=[], pay_count=0, error=None, edit="",
+    empty = dict(review=None, rows=[], law=None, law_error=None, law_notes=[], notices=[], pay_count=0, error=None, edit="", saved_msg=None,
                  ask_vehicle=False, ask_in_city=False, doc={}, doc_open=False)
 
     def progress(request, status, job):
@@ -307,7 +309,7 @@ def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) 
                       done=done_steps(status), job=job, job_title=title, job_hint=hint)))
 
     @app.get("/t/{traveler}/{trip_id}/review", response_class=HTMLResponse)
-    def review_page(request: Request, traveler: str, trip_id: str, error: str = "", edit: str = ""):
+    def review_page(request: Request, traveler: str, trip_id: str, error: str = "", edit: str = "", saved: str = ""):
         status = existing(traveler, trip_id)
         t, trip = status.traveler, status.trip_id
         base, key = trip_base(t, trip), job_key(t, trip)
@@ -343,8 +345,16 @@ def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) 
                 day = (f"결제 {when.month}.{when.day}." if not r.service_date else f"{when.month}.{when.day}.") if when else "미상"
             over_cap = (r is not None and r.category is Category.LODGING and d.manual is None and d.verdict.value == "감액지급"
                         and not review.trip.over_cap_reason)
+            slug = slug_of.get(d.item) if r is None else None
+            anchor = f"d-{r.receipt_id}" if r is not None else (f"a-{slug}" if slug else "")
             rows.append({"decision": d, "receipt": r, "label": label, "day": day, "kind": resolve_kind(d, r), "over_cap": over_cap,
-                         "slug": slug_of.get(d.item) if r is None else None, "unit": units.get(d.item) if r is None else None})
+                         "slug": slug, "unit": units.get(d.item) if r is None else None, "anchor": anchor, "saved": bool(saved) and anchor == saved})
+        saved_row = next((row for row in rows if row["saved"]), None)
+        saved_msg = None
+        if saved_row:
+            sd = saved_row["decision"]
+            saved_msg = (f"{sd.item}를 {sd.approved_amount:,}원({sd.verdict.value})으로 저장했어요" if sd.manual
+                         else f"{sd.item}를 규정대로({sd.verdict.value} {sd.approved_amount:,}원) 되돌렸어요")
         pay_count = sum(1 for d in review.decisions if d.verdict.value in ("지급", "감액지급"))
         saved, profile = service.load_trip_yaml(t, trip), service.load_profile(t)
         tr = review.trip
@@ -357,7 +367,7 @@ def register_review(app: FastAPI, settings, deps, render, trip_base, see_other) 
         doc = {"purpose": saved.get("purpose") or "", "org": profile.org, "dept": profile.dept, "approval": ", ".join(profile.approval)}
         return render(request, "review.html", base=base, status=status, done=done_steps(status), job=None, review=review, rows=rows,
                       law=review.law, law_error=None, law_notes=review.law_notes, notices=book.notices(today), pay_count=pay_count,
-                      error=ERRORS.get(error), ask_vehicle=ask_vehicle, ask_in_city=ask_in_city, doc=doc, edit=edit,
+                      error=ERRORS.get(error), ask_vehicle=ask_vehicle, ask_in_city=ask_in_city, doc=doc, edit=edit, saved_msg=saved_msg,
                       doc_open=not (doc["purpose"] and doc["org"] and doc["approval"]))
 
     @app.post("/t/{traveler}/{trip_id}/resolve")
@@ -409,14 +419,18 @@ def register_result(app: FastAPI, settings, deps, render, trip_base, see_other) 
         if job is not None and job.active:
             title, hint = JOB_TEXT.get(job.kind, ("작업 중이에요", ""))
             return render(request, "result.html", base=base, status=status, job=job, job_title=title, job_hint=hint,
-                          failed=None, result=None, current=None, versions=[])
+                          failed=None, result=None, current=None, versions=[], outdated=False, live=None)
         failed = job.message if (job is not None and job.state == "error" and job.kind == "finalize") else None
         result = service.latest_result(t, trip)
         if result is None and not failed:
             return see_other(f"{base}/review")
         versions = service.versions(t, trip)
+        # 서류를 만든 뒤 판정·입력이 바뀌었으면 지금 판정 합계와 함께 다시 만들기를 안내한다
+        outdated = result is not None and status.stage != "documented"
+        live = service.current_review(t, trip, date.today()) if outdated and not status.stale else None
         return render(request, "result.html", base=base, status=status, job=None, failed=failed, result=result,
-                      current=versions[-1] if versions and result else None, versions=list(reversed(versions)))
+                      current=versions[-1] if versions and result else None, versions=list(reversed(versions)),
+                      outdated=outdated, live=live)
 
     @app.get("/t/{traveler}/{trip_id}/v/{version}/evidence.hwpx")
     def download(traveler: str, trip_id: str, version: int):

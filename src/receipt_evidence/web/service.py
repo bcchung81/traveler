@@ -387,6 +387,8 @@ class TripService:
         decisions = dict(data.get("allowance_decisions") or {})
         mode = nfc(str(mode or "")).strip()
         if mode in ("", "규정대로"):
+            if item not in decisions and nfc(str(reason or "")).strip():  # 판정을 고르지 않고 사유만 적음 — 조용히 버리지 않는다
+                raise ValueError("‘규정대로’가 선택돼 있어 입력한 사유가 저장되지 않아요. 인정·감액·불인정 중 판정을 골라 주세요")
             decisions.pop(item, None)
         else:
             text = nfc(str(reason or "")).strip()
@@ -427,6 +429,8 @@ class TripService:
         entry = dict(data.get(receipt_id) or {})
         verdict = nfc(str(verdict or "")).strip()
         if verdict in ("", "규정대로"):
+            if "decision" not in entry and nfc(str(reason or "")).strip():  # 판정을 고르지 않고 사유만 적음 — 조용히 버리지 않는다
+                raise ValueError("‘규정대로’가 선택돼 있어 입력한 사유가 저장되지 않아요. 인정·감액·불인정 중 판정을 골라 주세요")
             entry.pop("decision", None)
         else:
             if verdict not in MANUAL_VERDICTS:
@@ -471,6 +475,16 @@ class TripService:
     def law_book(self, today: date) -> LawBook | None:
         """오늘 조회했거나(실패 시 저장해 둔 규정) 방금 조회에 실패한 기록이 있으면 규정 묶음, 조회가 필요하면 None."""
         return load_law_book(self.out_dir / ".cache", today)
+
+    def current_review(self, traveler: str, trip_id: str, today: date, owners: dict[str, set[str]] | None = None):
+        """지금 저장된 값으로 계산한 판정(서류와 무관). 읽은 영수증이나 규정이 없으면 None."""
+        from ..pipeline import find_job, review_receipts
+        receipts = self.receipts(traveler, trip_id)
+        book = self.law_book(today) or peek_law_book(self.out_dir / ".cache")
+        if not receipts or book is None:
+            return None
+        return review_receipts(find_job(self.data_dir, traveler, trip_id), receipts, book,
+                               owners if owners is not None else self.file_owners())
 
     def law_notices(self, today: date) -> list[str]:
         book = peek_law_book(self.out_dir / ".cache")

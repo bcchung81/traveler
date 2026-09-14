@@ -25,6 +25,10 @@
     {% set page = "extract" if confirm else {"empty": "upload", "uploaded": "upload", "extracted": "review", "documented": "result"}[t.stage] %}
     {% set label = "출장 정보 확인" if confirm else {"empty": "영수증 없음", "uploaded": "읽기 전", "extracted": "판정 전", "documented": "서류 완성"}[t.stage] %}
     {% set base = "/t/" ~ (t.traveler|urlencode) ~ "/" ~ (t.trip_id|urlencode) %}
+    {% set now = live.get(t.traveler ~ "/" ~ t.trip_id) %}
+    {% set outdated = t.version and t.stage != "documented" %}
+    {% set shown_amount = now.approved if now else t.approved %}
+    {% set shown_review = now.review_count if now else t.review_count %}
     <article class="panel trip-card">
       <a class="trip-card__link" href="{{ base }}/{{ page }}" aria-label="{{ t.display_name }} 열기"></a>
       <div class="trip-card__top">
@@ -36,16 +40,16 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(8,8,12,0.6)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 13h10l1-13"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>
         </a>
       </div>
-      <div class="hint trip-card__meta">{{ t.start_date|kdate }}{% if t.end_date %}~{{ t.end_date|kdate }}{% endif %} · 영수증 {{ t.files }}건</div>
+      <div class="hint trip-card__meta">{{ t.start_date|kdate }}{% if t.end_date %}~{{ t.end_date|kdate }}{% endif %} · 영수증 {{ t.files }}건{% if outdated %} · v{{ t.version }} 서류 {{ t.approved|won }}원{% endif %}</div>
       <div class="trip-card__bottom">
         <div class="trip-card__chips">
           <span class="chip chip--stage">{{ label }}</span>
-          {% if t.version %}<span class="chip">v{{ t.version }}</span>{% endif %}
-          {% if t.review_count %}<span class="chip chip--review">확인필요 {{ t.review_count }}</span>{% endif %}
+          {% if outdated %}<span class="chip chip--reduced" title="서류를 만든 뒤 판정이나 입력이 바뀌었어요">서류 다시 만들기</span>{% elif t.version %}<span class="chip">v{{ t.version }}</span>{% endif %}
+          {% if shown_review %}<span class="chip chip--review">확인필요 {{ shown_review }}</span>{% endif %}
           {% if t.stale %}<span class="chip chip--reduced">파일 바뀜</span>{% endif %}
-          {% if t.verify_ok %}<span class="chip chip--ok">검증 통과</span>{% endif %}
+          {% if t.verify_ok and not outdated %}<span class="chip chip--ok">검증 통과</span>{% endif %}
         </div>
-        <div class="trip-card__money"><span class="num trip-card__amount">{{ t.approved|won }}</span><span class="title title--sm">원</span></div>
+        <div class="trip-card__money" title="{{ '지금 판정 기준' if now else '서류 기준' }}"><span class="num trip-card__amount">{{ shown_amount|won }}</span><span class="title title--sm">원</span></div>
       </div>
     </article>
   {% endfor %}

@@ -21,6 +21,7 @@
   </section>
 {% elif review %}
   {% if error %}<div class="banner banner--error" role="alert">{{ error }}</div>{% endif %}
+  {% if saved_msg %}<div class="banner banner--saved" role="status">{{ saved_msg }}</div>{% endif %}
   {% for n in notices %}<div class="banner" role="status">{{ n }}</div>{% endfor %}
   {% if review.trip.proposed %}
   <div class="banner" role="status">출장 정보가 아직 자동 제안값이에요 — {% if review.trip.period_reliable %}왕복 교통·숙박 영수증이 있어 제안 기간으로 일비·식비를 계산했어요.{% else %}기간 근거가 부족해 일비·식비는 확정 후 지급돼요.{% endif %}
@@ -149,7 +150,7 @@
         <tbody>
         {% for row in rows %}
           {% set v = row.decision.verdict.value %}
-          <tr class="{% if v == '확인필요' %}is-review{% endif %}">
+          <tr class="{% if v == '확인필요' %}is-review{% endif %}{% if row.saved %} is-saved{% endif %}">
             <td style="font-weight:800;white-space:nowrap">{{ row.decision.item }}</td>
             {% set d = row.decision %}
             <td><div style="font-weight:600">{{ row.label }}</div><div class="basis">{{ d.basis|join(" · ") or d.reasons|join(" · ") }}</div>
@@ -160,15 +161,15 @@
               <details class="manual" id="d-{{ rid }}"{% if edit == rid %} open{% endif %}>
                 <summary>판정 바꾸기</summary>
                 <form method="post" action="{{ base }}/receipts/{{ rid|urlencode }}/decision" class="stack" data-decision-form
-                      data-claimed="{{ d.claimed_amount }}" data-label="{{ d.item }} · {{ row.label }}">
+                      data-claimed="{{ d.claimed_amount }}" data-label="{{ d.item }} · {{ row.label }}" data-has-manual="{{ '1' if d.manual else '' }}">
                   <div class="seg seg--4">
                     {% for value, label in [("규정대로", "규정대로"), ("지급", "인정"), ("감액지급", "감액"), ("불인정", "불인정")] %}
                     <label><input type="radio" name="verdict" value="{{ value }}" {% if (d.manual and d.manual.verdict.value == value) or (not d.manual and value == "규정대로") %}checked{% endif %}><span>{{ label }}</span></label>
                     {% endfor %}
                   </div>
                   <div class="grid2">
-                    <div class="field"><label for="amt-{{ rid }}">감액 인정액(원)</label><input class="input input--num" id="amt-{{ rid }}" name="approved_amount" inputmode="numeric" placeholder="감액일 때만" value="{{ d.approved_amount if d.verdict.value == '감액지급' else '' }}"></div>
-                    <div class="field"><label for="why-{{ rid }}">사유 <span class="hint">· 규정대로가 아니면 필수</span></label><input class="input" id="why-{{ rid }}" name="reason" value="{{ d.manual.reason if d.manual else '' }}"></div>
+                    <div class="field"><label for="amt-{{ rid }}">감액 인정액(원)</label><input class="input input--num" id="amt-{{ rid }}" name="approved_amount" data-auto-mode="감액지급" data-original="{{ d.approved_amount if d.verdict.value == '감액지급' else '' }}" inputmode="numeric" placeholder="감액일 때만" value="{{ d.approved_amount if d.verdict.value == '감액지급' else '' }}"></div>
+                    <div class="field"><label for="why-{{ rid }}">사유 <span class="hint">· 규정대로가 아니면 필수</span></label><input class="input" id="why-{{ rid }}" name="reason" data-original="{{ d.manual.reason if d.manual else '' }}" value="{{ d.manual.reason if d.manual else '' }}"></div>
                   </div>
                   <div class="hint">규정상 {{ (d.manual.rule_verdict if d.manual else d.verdict).value }} {{ (d.manual.rule_approved if d.manual else d.approved_amount)|won }}원 · 청구 {{ d.claimed_amount|won }}원. 규정보다 많이 인정하면 서류에 '규정 한도 초과 인정'으로 적어요.</div>
                   <button class="btn btn--yellow btn--small" type="submit">판정 저장</button>
@@ -186,17 +187,17 @@
               <details class="manual" id="a-{{ row.slug }}"{% if edit == row.slug %} open{% endif %}>
                 <summary>판정 바꾸기</summary>
                 <form method="post" action="{{ base }}/allowances/{{ row.slug }}/decision" class="stack" data-decision-form data-kind="allowance"
-                      data-unit="{{ row.unit if row.unit is not none else '' }}" data-label="{{ d.item }} · 정액">
+                      data-unit="{{ row.unit if row.unit is not none else '' }}" data-label="{{ d.item }} · 정액" data-has-manual="{{ '1' if d.manual else '' }}">
                   <div class="seg {{ 'seg--3' if modes|length == 3 else 'seg--4' }}">
                     {% for value in modes %}
                     <label><input type="radio" name="mode" value="{{ value }}" {% if cur == value %}checked{% endif %}><span>{{ {"일수": "인정 일수", "금액": "금액 지정"}.get(value, value) }}</span></label>
                     {% endfor %}
                   </div>
                   <div class="grid2">
-                    {% if row.slug != "incity" %}<div class="field"><label for="days-{{ row.slug }}">인정 일수</label><input class="input input--num" id="days-{{ row.slug }}" name="days" inputmode="numeric" placeholder="예: 1" value="{{ d.manual.days if d.manual and d.manual.days is not none else (review.trip.days or '') }}"></div>{% endif %}
-                    <div class="field"><label for="amount-{{ row.slug }}">금액(원)</label><input class="input input--num" id="amount-{{ row.slug }}" name="amount" inputmode="numeric" placeholder="금액 지정일 때" value="{{ d.approved_amount if cur == '금액' else '' }}"></div>
+                    {% if row.slug != "incity" %}<div class="field"><label for="days-{{ row.slug }}">인정 일수</label><input class="input input--num" id="days-{{ row.slug }}" {% set days_value = d.manual.days if d.manual and d.manual.days is not none else (review.trip.days or '') %}name="days" data-auto-mode="일수" data-original="{{ days_value }}" inputmode="numeric" placeholder="예: 1" value="{{ days_value }}"></div>{% endif %}
+                    <div class="field"><label for="amount-{{ row.slug }}">금액(원)</label><input class="input input--num" id="amount-{{ row.slug }}" name="amount" data-auto-mode="금액" data-original="{{ d.approved_amount if cur == '금액' else '' }}" inputmode="numeric" placeholder="금액 지정일 때" value="{{ d.approved_amount if cur == '금액' else '' }}"></div>
                   </div>
-                  <div class="field"><label for="why-{{ row.slug }}">사유 <span class="hint">· 규정대로가 아니면 필수</span></label><input class="input" id="why-{{ row.slug }}" name="reason" value="{{ d.manual.reason if d.manual else '' }}"></div>
+                  <div class="field"><label for="why-{{ row.slug }}">사유 <span class="hint">· 규정대로가 아니면 필수</span></label><input class="input" id="why-{{ row.slug }}" name="reason" data-original="{{ d.manual.reason if d.manual else '' }}" value="{{ d.manual.reason if d.manual else '' }}"></div>
                   <div class="hint">{% if row.unit %}일액 {{ row.unit|won }}원 × 인정 일수. {% endif %}규정상 {{ (d.manual.rule_verdict if d.manual else d.verdict).value }} {{ (d.manual.rule_approved if d.manual else d.approved_amount)|won }}원. 식사를 제공받은 경우처럼 일수로 안 맞으면 금액을 지정해요.</div>
                   <button class="btn btn--yellow btn--small" type="submit">판정 저장</button>
                 </form>
@@ -224,6 +225,7 @@
       <h2 class="title title--sm" id="dd-title" style="margin-top:6px">판정 사유를 입력해 주세요</h2>
       <div class="hint" id="dd-target" style="font-weight:800;color:var(--ink)"></div>
       <div class="banner banner--error" id="dd-msg" role="alert"></div>
+      <div class="field" id="dd-modes-field" hidden><span class="label">바꿀 판정</span><div class="seg seg--4" id="dd-modes"></div></div>
       <div class="field" id="dd-days-field" hidden><label for="dd-days">인정 일수</label><input class="input input--num" id="dd-days" inputmode="numeric"></div>
       <div class="field" id="dd-amount-field" hidden><label for="dd-amount" id="dd-amount-label">감액 인정액(원)</label><input class="input input--num" id="dd-amount" inputmode="numeric"></div>
       <div class="field"><label for="dd-reason">판정 사유 <span class="hint">· 서류의 담당자 판정 내역에 그대로 적혀요</span></label>
@@ -237,6 +239,7 @@
     if (!dlg || typeof dlg.showModal !== "function") return;  // 팝업을 못 쓰는 브라우저는 예전처럼 안내 화면으로
     var $ = function (id) { return document.getElementById(id); };
     var msg = $("dd-msg"), target = $("dd-target"), title = $("dd-title"), current = null;
+    var modesField = $("dd-modes-field"), modes = $("dd-modes");
     var daysField = $("dd-days-field"), days = $("dd-days"), amountField = $("dd-amount-field"), amount = $("dd-amount"), amountLabel = $("dd-amount-label"), reason = $("dd-reason");
     var names = {"지급": "인정", "감액지급": "감액", "불인정": "불인정", "일수": "인정 일수", "금액": "금액 지정"};
     var isAllowance = function (form) { return form.dataset.kind === "allowance"; };
@@ -247,9 +250,13 @@
       var v = verdictOf(form);
       return {days: isAllowance(form) && v === "일수", amount: isAllowance(form) ? v === "금액" : v === "감액지급"};
     }
+    function changed(form) {  // 처음 화면에 그려진 값과 달라진 입력이 있는지
+      return Array.prototype.some.call(form.querySelectorAll("input[data-original]"), function (el) { return el.value.trim() !== (el.dataset.original || "").trim(); });
+    }
     function problem(form) {
       var v = verdictOf(form);
-      if (v === "규정대로") return null;
+      // '규정대로'인 채 값을 바꾸면 서버가 판정을 지우기만 해서 입력이 조용히 사라졌다 — 판정을 고르게 한다
+      if (v === "규정대로") return (!form.dataset.hasManual && changed(form)) ? {msg: "‘규정대로’가 선택돼 있어 입력한 값이 저장되지 않아요. 어떤 판정으로 바꿀지 골라 주세요.", field: "mode"} : null;
       if (isAllowance(form)) {
         if (v === "일수" && !/^[0-9]{1,3}$/.test(String(form.elements.days.value).trim())) return {msg: "인정 일수는 0 이상의 정수로 적어 주세요", field: "days"};
         if (v === "금액" && !/[0-9]/.test(form.elements.amount.value)) return {msg: "인정 금액을 적어 주세요", field: "amount"};
@@ -265,7 +272,21 @@
       var n = needs(form);
       target.textContent = form.dataset.label + " → " + (names[verdictOf(form)] || "규정대로");
       msg.textContent = p.msg;
-      title.textContent = p.field === "days" ? "인정 일수를 확인해 주세요" : p.field === "amount" ? (isAllowance(form) ? "금액을 확인해 주세요" : "감액 인정액을 확인해 주세요") : "판정 사유를 입력해 주세요";
+      title.textContent = p.field === "mode" ? "판정을 골라 주세요" : p.field === "days" ? "인정 일수를 확인해 주세요" : p.field === "amount" ? (isAllowance(form) ? "금액을 확인해 주세요" : "감액 인정액을 확인해 주세요") : "판정 사유를 입력해 주세요";
+      modes.textContent = "";
+      form.querySelectorAll('input[name="verdict"], input[name="mode"]').forEach(function (radio) {
+        if (radio.value === "규정대로") return;
+        var b = document.createElement("button");
+        b.type = "button"; b.className = "btn btn--small" + (radio.checked ? " btn--yellow" : "");
+        b.textContent = radio.parentElement.textContent.trim();
+        b.addEventListener("click", function () {
+          radio.checked = true;
+          form.elements.reason.value = reason.value;
+          open(form, problem(form) || {msg: "사유를 확인하고 저장해 주세요.", field: "reason"});
+        });
+        modes.appendChild(b);
+      });
+      modesField.hidden = verdictOf(form) !== "규정대로";
       amountLabel.textContent = isAllowance(form) ? "인정 금액(원)" : "감액 인정액(원)";
       daysField.hidden = !n.days;
       amountField.hidden = !n.amount;
@@ -289,11 +310,18 @@
           }
           btn.disabled = false;
           var e = res.data.error || "저장하지 못했어요";
-          open(form, {msg: e, field: /일수/.test(e) ? "days" : /금액|감액/.test(e) ? "amount" : "reason"});
+          open(form, {msg: e, field: /판정을 골라/.test(e) ? "mode" : /일수/.test(e) ? "days" : /금액|감액/.test(e) ? "amount" : "reason"});
         })
         .catch(function () { btn.disabled = false; open(form, {msg: "저장하지 못했어요. 잠시 뒤 다시 시도해 주세요", field: "reason"}); });
     }
     document.querySelectorAll("form[data-decision-form]").forEach(function (form) {
+      // 일수·금액을 적으면 그에 맞는 판정을 자동으로 고른다(규정대로인 채 저장돼 버려지지 않게)
+      form.querySelectorAll("input[data-auto-mode]").forEach(function (el) {
+        el.addEventListener("input", function () {
+          var radio = form.querySelector('input[name="verdict"][value="' + el.dataset.autoMode + '"], input[name="mode"][value="' + el.dataset.autoMode + '"]');
+          if (radio && el.value.trim()) radio.checked = true;
+        });
+      });
       form.addEventListener("submit", function (e) {
         e.preventDefault();
         var p = problem(form);

@@ -45,7 +45,7 @@ def test_allowance_decision_via_review_json_and_totals(web):
     r = web.post(f"{BASE}/allowances/meal/decision", data={"mode": "일수", "days": "1", "reason": ""}, headers=JSON)
     assert r.status_code == 400 and "사유" in r.json()["error"]
     r = web.post(f"{BASE}/allowances/meal/decision", data={"mode": "금액", "amount": "30,000", "reason": "중식 1회 제공"}, headers=JSON)
-    assert r.status_code == 200 and unquote(r.json()["redirect"]) == f"{BASE}/review#a-meal"
+    assert r.status_code == 200 and unquote(r.json()["redirect"]) == f"{BASE}/review?saved=a-meal#a-meal"
     page = web.get(f"{BASE}/review").text
     assert "128,200" in page and "chip--manual" in page and "30,000원 지정" in page  # 48,200 + 일비 50,000 + 식비 30,000
     r = web.post(f"{BASE}/allowances/meal/decision", data={"mode": "규정대로"})

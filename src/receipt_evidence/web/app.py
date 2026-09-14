@@ -147,10 +147,21 @@ def create_app(settings: WebSettings, deps: WebDeps | None = None) -> FastAPI:
         groups: dict[str, list] = {}
         for t in trips:
             groups.setdefault(t.traveler, []).append(t)
+        live: dict[str, dict] = {}
+        owners = None
+        for t in trips:  # 서류와 별개로 지금 저장된 값의 판정 합계(판정을 바꿨는데 예전 서류 금액이 보이던 문제)
+            if t.extracted and not t.stale and t.stage != "documented":
+                try:
+                    owners = owners if owners is not None else deps.service.file_owners()
+                    rv = deps.service.current_review(t.traveler, t.trip_id, date.today(), owners)
+                except Exception:  # 홈 화면은 계산 실패로 막지 않는다(서류 금액으로 대신 표시)
+                    rv = None
+                if rv is not None:
+                    live[f"{t.traveler}/{t.trip_id}"] = {"approved": rv.totals["approved"], "review_count": len(rv.review_items)}
         trash = deps.service.trash_entries()
         just_trashed = next((e for e in trash if e["id"] == trashed), None) if trashed else None
         return render(request, "home.html", trips=trips, groups=list(groups.items()), notices=deps.service.law_notices(date.today()),
-                      trash_count=len(trash), just_trashed=just_trashed, restored=restored)
+                      trash_count=len(trash), just_trashed=just_trashed, restored=restored, live=live)
 
     @app.get("/trash", response_class=HTMLResponse)
     def trash_page(request: Request, purged: str = ""):

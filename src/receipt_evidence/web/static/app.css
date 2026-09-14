@@ -236,3 +236,8 @@ table.decisions tfoot td { border-top: 3px solid var(--ink); font-weight: 800; b
 .fill-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .fill-swatch { display: inline-block; width: 18px; height: 12px; border: 2px solid var(--ink); border-radius: 4px; }
 .fill-swatch.fill--empty { border: 2px dashed rgba(8, 8, 12, 0.45); }
+
+/* 판정 저장 알림 */
+.banner--saved { background: var(--cyan); }
+.decisions tr.is-saved td { background: #EFFFFD; }
+.decisions tr.is-saved td:first-child { box-shadow: inset 5px 0 0 var(--teal-text); }

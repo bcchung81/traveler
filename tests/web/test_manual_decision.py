@@ -39,7 +39,7 @@ def test_review_page_manual_decision_flow(web):
     assert f"?edit={quote(stay, safe='')}#d-{stay}" in page and "담당자 판정으로 정하기" in page  # 확인필요에서 바로 가기
     assert f'id="d-{stay}" open' in web.get(f"{BASE}/review", params={"edit": stay}).text
     r = web.post(f"{BASE}/receipts/{stay}/decision", data={"verdict": "지급", "reason": "체크인 7/9 확인"})
-    assert r.status_code == 303 and unquote(r.headers["location"]) == f"{BASE}/review#d-{stay}"
+    assert r.status_code == 303 and unquote(r.headers["location"]) == f"{BASE}/review?saved=d-{stay}#d-{stay}"
     page = web.get(f"{BASE}/review").text
     assert "248,200" in page and "잠깐, 확인!" not in page and "chip--manual" in page and "체크인 7/9 확인" in page
     assert "규정상 확인필요 0원" in page and "담당자 판정 1건" in page and "규정 한도 초과 인정 1건" not in page
@@ -73,7 +73,7 @@ def test_decision_errors_come_back_as_json_for_popup(web):
     r = web.post(f"{BASE}/receipts/{stay}/decision", data={"verdict": "감액지급", "approved_amount": "200000", "reason": "x"}, headers=JSON)
     assert r.status_code == 400 and "청구액 100,000원" in r.json()["error"]
     r = web.post(f"{BASE}/receipts/{stay}/decision", data={"verdict": "지급", "reason": "체크인 확인"}, headers=JSON)
-    assert r.status_code == 200 and r.json()["ok"] and unquote(r.json()["redirect"]) == f"{BASE}/review#d-{stay}"
+    assert r.status_code == 200 and r.json()["ok"] and unquote(r.json()["redirect"]) == f"{BASE}/review?saved=d-{stay}#d-{stay}"
     assert "248,200" in web.get(f"{BASE}/review").text
     r = web.post(f"{BASE}/receipts/{stay}/decision", data={"verdict": "지급", "reason": ""})  # 스크립트가 꺼진 브라우저는 예전처럼 안내 화면
     assert r.status_code == 400 and "text/html" in r.headers["content-type"]
