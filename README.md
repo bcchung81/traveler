@@ -12,7 +12,7 @@ uv sync
 영수증은 **Qwen3-VL-4B-Instruct(Q4_K_M, 이미지 인코더 mmproj Q8_0)**로 읽습니다. `VLM_VARIANT=8b`로 Qwen3-VL-8B로 되돌릴 수 있습니다(`./run-app.sh`·`scripts/start_vlm.sh`·웹앱·CLI 공통).
 ```bash
 huggingface-cli download Qwen/Qwen3-VL-4B-Instruct-GGUF Qwen3VL-4B-Instruct-Q4_K_M.gguf mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf
-VLM_VARIANT=8b ./run-app.sh restart     # 8B로 되돌리기(끌 때도 같은 값 불필요)
+VLM_VARIANT=8b ./run-app.sh restart     # 8B로 되돌리기
 ```
 - 2026-09-14 시연 영수증 3건 비교: 4B는 판정·금액이 8B와 같고 읽는 시간은 약 1/2~1/3(8B 88초 → 4B 24~56초). 4B가 결제 시각을 빠뜨리면 전사문의 같은 날짜 시각으로 채웁니다.
 - 읽은 결과 캐시는 모델별(`out/.cache/extract/p1/4b|8b`)이라, 모델을 바꾸면 새 영수증부터 그 모델로 읽습니다. 이미 읽어 둔 출장은 '다시 읽기'를 눌러야 바뀐 모델로 읽습니다.
