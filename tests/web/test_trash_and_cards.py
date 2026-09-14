@@ -42,3 +42,18 @@ def test_upload_page_has_delete_and_running_job_blocks_trash(web):
     web.deps.jobs._jobs["정백철/2026-07-09_서울"] = Job(key="정백철/2026-07-09_서울", kind="extract", state="running")
     r = web.post(f"{BASE}/trash")
     assert r.status_code == 400 and "작업" in r.text and web.deps.service.trip_dir("정백철", "2026-07-09_서울").exists()
+
+def test_detail_pages_use_slim_stepper(web):
+    new_trip(web)
+    web.post(f"{BASE}/finalize")
+    for path, current, sub in (("upload", "영수증 올리기", "영수증을 올려 주세요"), ("extract", "읽은 값 확인", "읽은 값이 맞나요?"),
+                               ("review", "지급 판정", "지급 3 · 확인 0"), ("result", "서류 만들기", "서류가 완성됐어요")):
+        page = web.get(f"{BASE}/{path}").text
+        assert 'class="stepper"' in page and page.count('aria-current="step"') == 1, path
+        assert "step__num" not in page and "step__top" not in page, path  # 큰 번호·아이콘 카드는 없다
+        current_li = page.split('aria-current="step"')[1].split("</li>")[0]
+        assert current in current_li and sub in current_li, path
+    review = web.get(f"{BASE}/review").text
+    assert review.count("step__sub") == 1  # 현재 단계만 상태 문구
+    css = web.get("/static/app.css").text
+    assert ".stepper" in css and ".steps {" not in css and ".steps-line" not in css

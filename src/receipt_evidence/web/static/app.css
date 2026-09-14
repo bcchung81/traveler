@@ -73,18 +73,24 @@ button, input, select, textarea { font-family: inherit; color: inherit; }
 .sticker--right { left: auto; right: 20px; transform: rotate(3deg); }
 
 /* 4단계 패널 */
-.steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
-.step { min-height: 200px; border: 3px solid var(--ink); border-radius: 16px; padding: 18px 20px; display: flex; flex-direction: column; justify-content: space-between; gap: 12px; text-decoration: none; color: var(--ink); }
-a.step:hover { color: var(--ink); transform: translate(-1px, -1px); }
-.step--current { background: var(--yellow); box-shadow: var(--shadow); }
-.step--done { background: var(--paper); box-shadow: var(--shadow); }
-.step--future { border-style: dashed; color: rgba(8, 8, 12, 0.5); }
-.step__top { display: flex; justify-content: space-between; align-items: flex-start; }
-.step__num { font-family: var(--font-num); font-size: 44px; line-height: 1; }
-.step__title { font-family: var(--font-title); font-size: 28px; line-height: 1.1; }
-.step__sub { font-size: 14px; font-weight: 600; opacity: 0.8; }
+/* 진행 표시(상세 화면 상단): 200px 카드 4장 → 한 줄 */
+.stepper ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 3px solid var(--ink); border-radius: 14px; background: var(--paper); box-shadow: var(--shadow-sm); overflow: hidden; }
+.step { min-width: 0; position: relative; }
+.step + .step { border-left: 2px solid rgba(8, 8, 12, 0.15); }
+.step__body { display: flex; align-items: center; gap: 10px; height: 100%; min-height: 54px; padding: 8px 16px; color: var(--ink); text-decoration: none; }
+a.step__body:hover { background: var(--white); }
+a.step__body:focus-visible { outline: 3px solid var(--cyan); outline-offset: -3px; }
+.step__dot { width: 30px; height: 30px; flex-shrink: 0; border: 2.5px solid var(--ink); border-radius: 999px; background: var(--white); display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-num); font-size: 15px; line-height: 1; }
+.step__text { display: flex; flex-direction: column; min-width: 0; }
+.step__title { font-family: var(--font-title); font-size: 18px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step__sub { font-size: 12px; font-weight: 700; color: rgba(8, 8, 12, 0.7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step--current { background: var(--yellow); }
+.step--current .step__dot { background: var(--ink); color: var(--yellow); }
+.step--done .step__dot { background: var(--cyan); }
+.step--future .step__title { color: rgba(8, 8, 12, 0.45); }
+.step--future .step__dot { border-color: rgba(8, 8, 12, 0.3); color: rgba(8, 8, 12, 0.45); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .check { width: 32px; height: 32px; border: 2px solid var(--ink); border-radius: 999px; background: var(--cyan); display: inline-flex; align-items: center; justify-content: center; }
-.step svg { flex-shrink: 0; }
 
 /* 칩 */
 .chip { padding: 3px 11px; border: 2px solid var(--ink); border-radius: 999px; font-size: 12px; font-weight: 800; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; background: var(--paper); }
@@ -179,11 +185,6 @@ table.decisions tfoot td { border-top: 3px solid var(--ink); font-weight: 800; b
 .empty { align-items: flex-start; padding: 40px; gap: 18px; }
 
 /* 첫 화면 최소 입력 · 자동 채움 */
-.steps-line { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
-.steps-line li { padding: 6px 14px; border: 2px solid rgba(8, 8, 12, 0.3); border-radius: 999px; background: var(--paper); font-weight: 700; font-size: 14px; color: var(--muted); }
-.steps-line li.is-current { border: 3px solid var(--ink); background: var(--yellow); color: var(--ink); }
-.steps-line li.is-done { border-color: var(--ink); color: var(--ink); }
-.steps-line .num { font-family: var(--font-num); }
 .new-trip { display: grid; gap: 16px; max-width: 880px; margin: 0 auto; width: 100%; }
 .dropzone--big { min-height: 360px; }
 .traveler-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }

@@ -5,7 +5,7 @@ from helpers import DOC_INFO, TRIP_CONFIRM, png_bytes, upload_new
 
 def test_first_screen_asks_only_for_receipts_and_traveler(web):
     page = web.get("/new").text
-    assert "영수증을 여기에 끌어다 놓으세요" in page and 'name="traveler_new"' in page and "steps-line" in page
+    assert "영수증을 여기에 끌어다 놓으세요" in page and 'name="traveler_new"' in page and 'class="stepper"' in page
     for name in ("start_date", "destination_region", "purpose", "approval", "grade", "workplace_region", "route_stations", "org"):
         assert f'name="{name}"' not in page, name
     web.deps.service.create_trip("정백철", date(2026, 7, 9), "서울")

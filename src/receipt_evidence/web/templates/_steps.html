@@ -1,42 +1,21 @@
-{% macro icon(n, state) -%}
-{% set stroke = "#08080C" if state != "future" else "rgba(8,8,12,0.4)" %}
-{% set fill = "#FFFFFF" if state != "future" else "none" %}
-{% if n == 1 -%}
-<svg width="70" height="80" viewBox="0 0 84 96" fill="none" stroke="{{ stroke }}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4h64v84l-8-6-8 6-8-6-8 6-8-6-8 6-8-6z" fill="{{ fill }}"></path><path d="M22 24h40"></path><path d="M22 38h28"></path><path d="M22 52h40"></path><path d="M46 66h16" stroke="{{ '#FF7A2F' if state != 'future' else stroke }}" stroke-width="5"></path></svg>
-{%- elif n == 2 -%}
-<svg width="80" height="70" viewBox="0 0 96 84" fill="none" stroke="{{ stroke }}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="10" width="80" height="64" rx="8" fill="{{ fill }}"></rect><circle cx="48" cy="42" r="16"></circle><path d="M60 54l14 14" stroke-width="5"></path><path d="M40 42h16" stroke="{{ '#2FF0E6' if state != 'future' else stroke }}" stroke-width="5"></path></svg>
-{%- elif n == 3 -%}
-<svg width="80" height="70" viewBox="0 0 96 84" fill="none" stroke="{{ stroke }}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M48 8v68"></path><path d="M28 76h40"></path><path d="M14 20h68"></path><path d="M14 20L4 46h20z" fill="{{ fill }}"></path><path d="M82 20l-10 26h20z" fill="{{ fill }}"></path></svg>
-{%- else -%}
-<svg width="64" height="80" viewBox="0 0 76 96" fill="none" stroke="{{ stroke }}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h44l20 20v68H6z" fill="{{ fill }}"></path><path d="M50 4v20h20"></path><path d="M18 46h40"></path><path d="M18 58h40"></path><path d="M18 70h24" stroke="{{ '#FF7A2F' if state != 'future' else stroke }}" stroke-width="5"></path></svg>
-{%- endif %}
-{%- endmacro %}
-
+{# 상세 화면 상단 진행 표시: 한 줄 4단계(번호 또는 완료 표시·제목, 현재 단계만 상태 문구). 지나간 단계와 바로 다음 단계는 링크 #}
 {% macro steps(base, active, done=(), subs={}, compact=False) %}
-{% set items = [(1, "영수증 올리기", "upload", "사진·스크린샷·PDF 모두 괜찮아요"), (2, "읽은 값 확인", "extract", "로컬 AI가 읽은 값을 확인해요"), (3, "지급 판정", "review", "공무원 여비 규정으로 가려요"), (4, "서류 만들기", "result", "HWPX 증빙내역서 + 붙임")] %}
-{% if compact %}
-<ol class="steps-line" aria-label="진행 단계">
-{% for n, title, path, sub in items %}<li class="{{ 'is-current' if n == active else ('is-done' if n in done else '') }}"><span class="num">0{{ n }}</span> {{ title }}</li>{% endfor %}
-</ol>
-{% else %}
-<section class="steps" aria-label="진행 단계">
-{% for n, title, path, sub in items %}
-  {% set state = "current" if n == active else ("done" if n in done else "future") %}
-  {% set tag = "a" if base and (state != "future" or n == active + 1) else "div" %}
-  <{{ tag }} class="step step--{{ state }}"{% if tag == "a" %} href="{{ base }}/{{ path }}"{% endif %}>
-    <div class="step__top">
-      <div class="stack">
-        <span class="step__num">0{{ n }}</span>
-        {% if state == "done" %}<span class="check" aria-label="완료"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#08080C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg></span>{% endif %}
-      </div>
-      {{ icon(n, state) }}
-    </div>
-    <div>
-      <div class="step__title">{{ title }}</div>
-      <div class="step__sub">{{ subs.get(n, sub) }}</div>
-    </div>
-  </{{ tag }}>
-{% endfor %}
-</section>
-{% endif %}
+{% set items = [(1, "영수증 올리기", "upload"), (2, "읽은 값 확인", "extract"), (3, "지급 판정", "review"), (4, "서류 만들기", "result")] %}
+<nav class="stepper" aria-label="진행 단계">
+  <ol>
+  {% for n, title, path in items %}
+    {% set state = "current" if n == active else ("done" if n in done else "future") %}
+    {% set link = base and n != active and (state == "done" or n == active + 1) %}
+    <li class="step step--{{ state }}"{% if state == "current" %} aria-current="step"{% endif %}>
+      {% if link %}<a class="step__body" href="{{ base }}/{{ path }}">{% else %}<span class="step__body">{% endif %}
+        <span class="step__dot" aria-hidden="true">{% if state == "done" %}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>{% else %}{{ n }}{% endif %}</span>
+        <span class="step__text">
+          <span class="step__title">{{ title }}{% if state == "done" %}<span class="sr-only"> (완료)</span>{% endif %}</span>
+          {% if state == "current" and subs.get(n) %}<span class="step__sub">{{ subs.get(n) }}</span>{% endif %}
+        </span>
+      {% if link %}</a>{% else %}</span>{% endif %}
+    </li>
+  {% endfor %}
+  </ol>
+</nav>
 {% endmacro %}
