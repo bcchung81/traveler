@@ -108,6 +108,19 @@ def infer_category(category: Category, merchant: str | None, transcript: str) ->
             return cat, hit
     return category, None
 
+_DT_ALL = re.compile(r"(\d{4})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})\s*일?[^\d\n]{0,6}?(\d{1,2}):(\d{2})")
+
+def fill_payment_time(r: Receipt, transcript: str) -> Receipt:
+    """모델이 결제일시를 날짜만 줬고(시각 표기 없음) 전사문에 같은 날짜의 시각이 있으면 그 시각을 쓴다(4B가 '승인일자'를 고르는 경우)."""
+    raw = r.raw.get("paid_at")
+    if r.paid_at is None or (isinstance(raw, str) and ":" in raw):
+        return r
+    for m in _DT_ALL.finditer(transcript):
+        y, mo, d, hh, mm = (int(x) for x in m.groups())
+        if (y, mo, d) == (r.paid_at.year, r.paid_at.month, r.paid_at.day) and hh < 24 and mm < 60:
+            return r.model_copy(update={"paid_at": r.paid_at.replace(hour=hh, minute=mm), "raw": r.raw | {"paid_at_time_from": m.group(0)}})
+    return r
+
 def _structure(vlm: VlmClient, pngs: list[Path], transcript: str) -> dict | None:
     content = [{"type": "text", "text": STRUCTURE_PROMPT + transcript}] + [image_content(p) for p in pngs]
     user = {"role": "user", "content": content}
@@ -150,7 +163,7 @@ def _extract_group(vlm: VlmClient, group: list[ReceiptImage], tdir: Path, cache:
     if data is None:
         return Receipt(receipt_id=first.image_id, image_id=first.image_id, sha256=first.sha256, transcript_path=str(tpath),
                        warnings=["EXTRACT_FAILED"], confidence=0.0, raw={"error": error} if error else {})
-    r = to_receipt(first.image_id, data, str(tpath))
+    r = fill_payment_time(to_receipt(first.image_id, data, str(tpath)), transcript)
     category, hit = infer_category(r.category, r.merchant, transcript)
     if hit:
         r = r.model_copy(update={"category": category, "raw": r.raw | {"category_inferred_from": hit}})

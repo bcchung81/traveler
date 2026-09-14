@@ -3,12 +3,13 @@ from pathlib import Path
 from urllib.parse import unquote
 import pytest
 from fastapi.testclient import TestClient
+from receipt_evidence import vlm_models
 from receipt_evidence.vlm import LlamaServerClient
 from receipt_evidence.web.app import WebSettings, create_app, default_deps
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = {unicodedata.normalize("NFC", p.name): p for p in (ROOT / "data").rglob("*") if p.is_file()}
-MODEL = Path.home() / ".cache/huggingface/hub/models--Qwen--Qwen3-VL-8B-Instruct-GGUF/snapshots/f982a07559d4a2f6c8744d840bf6fccab30eea96/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
+MODEL = vlm_models.current().paths()[0]  # 운영 모델(기본 Qwen3-VL 4B)
 BASE = "/t/정백철/2026-07-09_서울"
 FILES = ("Screenshot_20260713_083024.jpg", "Screenshot_20260713_083037.jpg", "숙박 영수증.pdf")
 
@@ -26,7 +27,7 @@ def _wait_job(client, timeout: float = 900):
 
 @pytest.mark.integration
 def test_web_e2e_real_receipts_on_demand_vlm(tmp_path):
-    if not MODEL.exists() or shutil.which("llama-server") is None or not all(n in SRC for n in FILES):
+    if MODEL is None or not MODEL.exists() or shutil.which("llama-server") is None or not all(n in SRC for n in FILES):
         pytest.skip("모델·llama-server·실제 영수증이 없음")
     if _vlm_up():
         pytest.skip("llama-server가 이미 떠 있음 — 필요할 때만 켜고 끄는지 검증하려면 끄고 실행")

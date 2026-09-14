@@ -3,12 +3,14 @@
 #   사용: ./run-app.sh start | stop | restart | status
 #   웹      http://127.0.0.1:${PORT:-8780}
 #   로컬 AI http://127.0.0.1:${VLM_PORT:-8088}   (데모 시연1 실적 취합은 8770)
-# 환경변수: PORT, VLM_PORT, OPEN=0(브라우저 안 열기), VLM_WAIT(로컬 AI 준비 대기 초, 기본 180)
+# 환경변수: PORT, VLM_PORT, VLM_VARIANT(로컬 AI 모델 4b 기본 | 8b), OPEN=0(브라우저 안 열기), VLM_WAIT(로컬 AI 준비 대기 초, 기본 180)
 set -uo pipefail
 cd "$(dirname "$0")"
 
 PORT="${PORT:-8780}"
 VLM_PORT="${VLM_PORT:-8088}"
+VLM_VARIANT="${VLM_VARIANT:-4b}"  # 영수증을 읽는 모델: Qwen3-VL 4B(기본) — scripts/start_vlm.sh·웹앱이 같은 값을 쓴다
+export VLM_VARIANT
 VLM_WAIT="${VLM_WAIT:-180}"
 RUN_DIR=".run"
 WEB_PID="$RUN_DIR/web.pid"
@@ -17,6 +19,9 @@ LLAMA_PID="$RUN_DIR/llama.pid"
 alive()      { [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
 port_owner() { { lsof -nP -iTCP:"$1" -sTCP:LISTEN -Fc 2>/dev/null || true; } | sed -n 's/^c//p' | head -1; }
 vlm_up()     { curl -sf -o /dev/null --max-time 2 "http://127.0.0.1:${VLM_PORT}/health"; }
+# 켜져 있는 로컬 AI가 불러온 모델 파일 이름(예: Qwen3VL-4B-Instruct-Q4_K_M.gguf)
+vlm_model()  { { curl -sf --max-time 2 "http://127.0.0.1:${VLM_PORT}/props" || true; } | sed -n 's/.*"model_path":"\([^"]*\)".*/\1/p' | sed 's#.*/##'; }
+want_model() { VLM_DRY_RUN=1 bash scripts/start_vlm.sh 2>/dev/null | sed -n 's/^model=//p' | sed 's#.*/##'; }
 web_up()     { curl -sf -o /dev/null --max-time 2 "http://127.0.0.1:${PORT}/"; }
 
 # 이름 · pid 파일 · 포트 · 명령줄에 있어야 할 문자열(다른 프로그램을 잘못 끄지 않도록)
@@ -45,8 +50,17 @@ stop_service() {
 }
 
 start_llama() {
+  local want; want="$(want_model)"
+  if [ -z "$want" ]; then
+    VLM_DRY_RUN=1 bash scripts/start_vlm.sh >/dev/null  # 모델 파일을 못 찾은 사유를 그대로 보여 준다
+    return 1
+  fi
   if vlm_up; then
-    echo "로컬 AI: 이미 실행 중 — :${VLM_PORT}"
+    local have; have="$(vlm_model)"
+    echo "로컬 AI: 이미 실행 중 — :${VLM_PORT} (${have:-모델 확인 불가})"
+    if [ -n "$have" ] && [ "$have" != "$want" ]; then
+      echo "로컬 AI: 설정 모델(${want})과 달라요. 바꾸려면 ./run-app.sh restart" >&2
+    fi
     return 0
   fi
   local owner; owner="$(port_owner "$VLM_PORT")"
@@ -54,8 +68,8 @@ start_llama() {
     echo "로컬 AI: 포트 ${VLM_PORT}을(를) 다른 프로그램(${owner})이 쓰고 있어요. VLM_PORT=다른번호 로 실행하세요" >&2
     return 1
   fi
-  echo "로컬 AI: 켜는 중 — :${VLM_PORT} (모델 로딩 최대 ${VLM_WAIT}초)"
-  VLM_PORT="$VLM_PORT" nohup bash scripts/start_vlm.sh >/dev/null 2>&1 &
+  echo "로컬 AI: 켜는 중 — :${VLM_PORT} ${want} (모델 로딩 최대 ${VLM_WAIT}초)"
+  VLM_PORT="$VLM_PORT" VLM_VARIANT="$VLM_VARIANT" nohup bash scripts/start_vlm.sh >/dev/null 2>&1 &
   echo $! > "$LLAMA_PID"
   for _ in $(seq 1 "$VLM_WAIT"); do
     if vlm_up; then echo "로컬 AI: 준비됨"; return 0; fi
@@ -114,7 +128,7 @@ cmd_stop() {
 
 cmd_status() {
   if web_up; then echo "웹앱(:${PORT}): 실행 중 — http://127.0.0.1:${PORT}"; else echo "웹앱(:${PORT}): 꺼짐"; fi
-  if vlm_up; then echo "로컬 AI(:${VLM_PORT}): 실행 중"; else echo "로컬 AI(:${VLM_PORT}): 꺼짐"; fi
+  if vlm_up; then echo "로컬 AI(:${VLM_PORT}): 실행 중 — $(vlm_model)"; else echo "로컬 AI(:${VLM_PORT}): 꺼짐 (켤 모델: $(want_model))"; fi
 }
 
 case "${1:-}" in

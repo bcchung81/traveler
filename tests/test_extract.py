@@ -82,7 +82,7 @@ def test_cache_skips_vlm_on_second_run(tmp_path):
     r2 = extract_receipts(vlm2, [_img(tmp_path)], tmp_path / "out2", cache=cache)[0]
     assert r1.amount == r2.amount == 48200 and vlm2.calls == [] and (cache.hits, cache.misses) == (1, 1)
     assert r2.sha256 == "abc" and (tmp_path / "out2" / "transcripts" / "abc-p1.txt").read_text(encoding="utf-8") == "결제금액 48,200원"
-    assert (cache.dir / "abc.json").exists() and cache.dir.parent.name == "extract"
+    assert (cache.dir / "abc.json").exists() and cache.dir.parent.parent.name == "extract" and cache.dir.name == "4b"
 
 def test_failed_extraction_is_not_cached(tmp_path):
     cache = ExtractCache(tmp_path / ".cache")
@@ -144,3 +144,14 @@ def test_rotated_photo_uses_separate_cache_key(tmp_path):
     vlm = FakeVlmClient(["결제금액 48,200원", json.dumps(KTX, ensure_ascii=False)])
     extract_receipts(vlm, [img.model_copy(update={"orientation": 6})], tmp_path / "o2", cache=cache)
     assert len(vlm.calls) == 2  # 예전에 눕힌 채 읽은 결과를 재사용하지 않는다
+
+def test_payment_time_recovered_from_transcript_when_model_gives_date_only(tmp_path):
+    # Qwen3-VL 4B는 '승인일자 2026.07.08'(시각 없음)을 결제일시로 고르곤 한다 — 전사문에 같은 날짜의 시각이 있으면 채운다
+    transcript = "발행일시\n2026년 07월 08일 (수) 22:10\n승차일\n2026년 07월 09일 (목)\n승인일자\n2026.07.08\n· 발행일시 : 2026-07-13 08:30"
+    vlm = FakeVlmClient([transcript, json.dumps(dict(KTX, paid_at="2026.07.08"), ensure_ascii=False)])
+    r = extract_receipts(vlm, [_img(tmp_path)], tmp_path / "out")[0]
+    assert r.paid_at == datetime(2026, 7, 8, 22, 10) and r.raw["paid_at_time_from"] == "2026년 07월 08일 (수) 22:10"
+    other = FakeVlmClient(["발행일시 : 2026-07-13 08:30", json.dumps(dict(KTX, paid_at="2026-07-08"), ensure_ascii=False)])
+    assert extract_receipts(other, [_img(tmp_path)], tmp_path / "o2")[0].paid_at == datetime(2026, 7, 8, 0, 0)  # 다른 날짜의 시각은 쓰지 않는다
+    explicit = FakeVlmClient([transcript, json.dumps(dict(KTX, paid_at="2026-07-08 00:05"), ensure_ascii=False)])
+    assert extract_receipts(explicit, [_img(tmp_path)], tmp_path / "o3")[0].paid_at == datetime(2026, 7, 8, 0, 5)  # 모델이 시각을 줬으면 그대로

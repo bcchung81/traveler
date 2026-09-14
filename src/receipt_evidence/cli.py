@@ -1,9 +1,10 @@
 # src/receipt_evidence/cli.py
 from __future__ import annotations
-import argparse, glob, logging, os, shutil, sys
+import argparse, logging, os, shutil, sys
 from datetime import date
 from pathlib import Path
 from .law import LawUnavailable, get_law_book, kdate
+from . import vlm_models
 from .mcp_client import kordoc_caller, law_caller
 from .pipeline import Clients, RunOptions, run_batch
 from .vlm import LlamaServerClient
@@ -40,12 +41,15 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 def vlm_ready() -> tuple[bool, str]:
-    """llama-server 실행 파일과 Qwen3-VL 모델 파일이 이 컴퓨터에 있는지(scripts/start_vlm.sh 기본 경로·VLM_MODEL)."""
+    """llama-server 실행 파일과 운영 모델(VLM_VARIANT, 기본 Qwen3-VL 4B) 파일이 이 컴퓨터에 있는지."""
     if shutil.which("llama-server") is None:
         return False, "llama-server 실행 파일이 없어요(llama.cpp 설치 필요)"
-    model = os.environ.get("VLM_MODEL") or next(iter(glob.glob(os.path.expanduser(
-        "~/.cache/huggingface/hub/models--Qwen--Qwen3-VL-8B-Instruct-GGUF/snapshots/*/Qwen3VL-8B-Instruct-Q4_K_M.gguf"))), "")
-    return (True, f"모델 파일 있음: {model}") if model and Path(model).exists() else (False, "Qwen3-VL 모델 파일을 찾지 못했어요(VLM_MODEL 지정)")
+    variant = vlm_models.current()
+    model, mmproj = variant.paths()
+    model = Path(os.environ["VLM_MODEL"]) if os.environ.get("VLM_MODEL") else model
+    if model and model.exists() and (mmproj or os.environ.get("VLM_MMPROJ")):
+        return True, f"{variant.label} 모델 파일 있음: {model}"
+    return False, f"{variant.label} 모델 파일을 찾지 못했어요 — huggingface-cli download {variant.repo} {variant.model_file} {variant.mmproj_file}"
 
 def _prepare(out_dir: Path) -> int:
     logging.getLogger("receipt_evidence").addHandler(logging.NullHandler())  # 결과는 아래에서 직접 알린다(같은 경고를 두 번 찍지 않게)
