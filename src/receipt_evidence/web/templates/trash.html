@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}휴지통 · 여비정산 증빙{% endblock %}
+{% block meta %}휴지통 {{ entries|length }}건 · 지운 출장을 복구하거나 영구 삭제해요{% endblock %}
+{% block cta %}<a class="cta" href="/">홈으로</a>{% endblock %}
+{% block content %}
+{% if purged %}<div class="banner" role="status">영구 삭제했어요.</div>{% endif %}
+<section class="panel">
+  <h1 class="title">휴지통</h1>
+  {% for e in entries %}
+  <div class="trash-row">
+    <span class="stack" style="gap:2px">
+      <span style="font-weight:800">{{ e.traveler }} · {{ e.trip_id }}</span>
+      <span class="hint">{{ e.deleted_at|replace("T", " ") }} 삭제 · 영수증 {{ e.files }}건{% if e.version %} · 서류 v{{ e.version }}{% endif %}</span>
+    </span>
+    <span class="row">
+      <form method="post" action="/trash/{{ e.id|urlencode }}/restore"><button class="btn btn--yellow btn--small" type="submit">복구</button></form>
+      <form method="post" action="/trash/{{ e.id|urlencode }}/purge">
+        <button class="btn btn--small" type="submit" data-confirm-action="/trash/{{ e.id|urlencode }}/purge" data-confirm-title="영구 삭제할까요?"
+                data-confirm-what="{{ e.traveler }} · {{ e.trip_id }}" data-confirm-body="영수증 파일과 만든 서류가 완전히 지워지고 되돌릴 수 없어요." data-confirm-button="영구 삭제">영구 삭제</button>
+      </form>
+    </span>
+  </div>
+  {% else %}
+  <div class="hint">휴지통이 비어 있어요.</div>
+  {% endfor %}
+</section>
+{% include "_confirm_dialog.html" %}
+{% endblock %}

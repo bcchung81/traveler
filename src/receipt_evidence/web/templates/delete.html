@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}출장 삭제 · 여비정산 증빙{% endblock %}
+{% block meta %}{{ status.traveler }} · {{ status.display_name }}{% endblock %}
+{% block content %}
+<section class="panel" role="alert">
+  <span class="sticker">잠깐!</span>
+  <h1 class="title" style="margin-top:8px">출장을 휴지통으로 옮길까요?</h1>
+  <div class="hint" style="font-weight:800;color:var(--ink)">{{ status.traveler }} · {{ status.display_name }} · 영수증 {{ status.files }}건{% if status.version %} · 서류 v{{ status.version }}{% endif %}</div>
+  <div class="hint" style="font-size:15px">영수증과 만든 서류가 목록에서 사라져요. 휴지통에서 언제든 복구할 수 있어요.</div>
+  <form method="post" action="{{ action }}" class="row">
+    <button class="btn btn--danger" type="submit">휴지통으로 옮기기</button>
+    <a class="btn" href="{{ back }}">취소</a>
+  </form>
+</section>
+{% endblock %}

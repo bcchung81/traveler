@@ -38,7 +38,7 @@
   {% set F = trip_fields %}
   {% set trip_form %}
     <input type="hidden" name="route_stations" value="{{ (F.route_stations.value or [])|join(', ') }}">
-    <div class="trip-grid">
+    <div class="trip-form-grid">
       <div class="field"><label for="t_start">출장 시작 {{ auto(F.start_date) }}</label><input class="input" type="date" id="t_start" name="start_date" value="{{ F.start_date.value or '' }}">{{ basis(F.start_date) }}</div>
       <div class="field"><label for="t_end">출장 종료 {{ auto(F.end_date) }}</label><input class="input" type="date" id="t_end" name="end_date" value="{{ F.end_date.value or '' }}">{{ basis(F.end_date) }}</div>
       <div class="field"><label for="t_dest">출장지 {{ auto(F.destination_region) }}</label><input class="input" id="t_dest" name="destination_region" placeholder="예: 서울" value="{{ F.destination_region.value or '' }}">{{ basis(F.destination_region) }}</div>

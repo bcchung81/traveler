@@ -13,7 +13,8 @@ from ..rules import MANUAL_VERDICTS
 from ..versioning import read_latest
 from ..workspace import (STAGING_PREFIX, TRIP_DIR_RE, TRIP_YAML_FIELDS, HashCache, NotFound, Suggestion, apply_overrides, is_staging,
                          load_overrides, load_traveler, move_trip, nfc, resolve_moved, staging_trip_id, suggest_trip, trip_file_owners,
-                         trip_confirmed, unique_trip_id, was_auto_named)
+                         trip_confirmed, unique_trip_id, was_auto_named, BusyError, list_trash, out_lock, purge_trash, restore_trip,
+                         trash_trip)
 
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024
 PROFILE_FIELDS = ("position", "grade", "org", "dept", "workplace_region", "approval")
@@ -201,6 +202,33 @@ class TripService:
         self.trip_dir(t, trip_id).mkdir(parents=True)
         self.save_files(t, trip_id, prepared)
         return t, trip_id
+
+    # ---- 휴지통 ----
+    def trash_trip(self, traveler: str, trip_id: str) -> str:
+        t, trip = _name(traveler), _name(trip_id)
+        self.trip_dir(t, trip)  # 경로 검증
+        try:
+            with out_lock(self.out_dir):
+                return trash_trip(self.data_dir, self.out_dir, t, trip)
+        except BusyError as e:
+            raise ValueError(str(e)) from None
+
+    def trash_entries(self) -> list[dict]:
+        return list_trash(self.data_dir)
+
+    def restore_trash(self, trash_id: str) -> tuple[str, str]:
+        try:
+            with out_lock(self.out_dir):
+                return restore_trip(self.data_dir, self.out_dir, _name(trash_id))
+        except BusyError as e:
+            raise ValueError(str(e)) from None
+
+    def purge_trash(self, trash_id: str) -> None:
+        try:
+            with out_lock(self.out_dir):
+                purge_trash(self.data_dir, self.out_dir, _name(trash_id))
+        except BusyError as e:
+            raise ValueError(str(e)) from None
 
     def trip_suggestion(self, traveler: str, trip_id: str) -> dict[str, Suggestion]:
         t, trip = _name(traveler), _name(trip_id)

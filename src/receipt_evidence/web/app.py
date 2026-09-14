@@ -142,12 +142,29 @@ def create_app(settings: WebSettings, deps: WebDeps | None = None) -> FastAPI:
     app.state.render = render
 
     @app.get("/", response_class=HTMLResponse)
-    def home(request: Request):
+    def home(request: Request, trashed: str = "", restored: str = "", purged: str = ""):
         trips = deps.service.list_trips()
         groups: dict[str, list] = {}
         for t in trips:
             groups.setdefault(t.traveler, []).append(t)
-        return render(request, "home.html", trips=trips, groups=list(groups.items()), notices=deps.service.law_notices(date.today()))
+        trash = deps.service.trash_entries()
+        just_trashed = next((e for e in trash if e["id"] == trashed), None) if trashed else None
+        return render(request, "home.html", trips=trips, groups=list(groups.items()), notices=deps.service.law_notices(date.today()),
+                      trash_count=len(trash), just_trashed=just_trashed, restored=restored)
+
+    @app.get("/trash", response_class=HTMLResponse)
+    def trash_page(request: Request, purged: str = ""):
+        return render(request, "trash.html", entries=deps.service.trash_entries(), purged=bool(purged))
+
+    @app.post("/trash/{trash_id}/restore")
+    def restore(trash_id: str):
+        traveler, trip_id = deps.service.restore_trash(trash_id)
+        return see_other(f"/?restored={quote(f'{traveler}/{trip_id}', safe='')}")
+
+    @app.post("/trash/{trash_id}/purge")
+    def purge(trash_id: str):
+        deps.service.purge_trash(trash_id)
+        return see_other("/trash?purged=1")
 
     @app.get("/vlm", response_class=HTMLResponse)
     def vlm_badge(request: Request):

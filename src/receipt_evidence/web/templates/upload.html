@@ -92,5 +92,11 @@
   </div>
 </section>
 {% include "_local_note.html" %}
+<div class="row" style="justify-content:flex-end">
+  <a class="btn btn--small" href="{{ base }}/delete" data-confirm-action="{{ base }}/trash" data-confirm-title="출장을 휴지통으로 옮길까요?"
+     data-confirm-what="{{ status.traveler }} · {{ status.display_name }} · 영수증 {{ status.files }}건{% if status.version %} · 서류 v{{ status.version }}{% endif %}"
+     data-confirm-body="영수증과 만든 서류가 목록에서 사라져요. 휴지통에서 언제든 복구할 수 있어요." data-confirm-button="휴지통으로 옮기기">출장 삭제</a>
+</div>
+{% include "_confirm_dialog.html" %}
 {% endif %}
 {% endblock %}

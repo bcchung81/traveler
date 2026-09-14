@@ -203,3 +203,41 @@ def test_period_reliable_needs_round_trip_or_full_stay():
     assert not propose_trip("_새정산-x", [stay.model_copy(update={"service_end_date": None})], base).period_reliable
     assert propose_trip("_새정산-x", [_leg("r", date(2026, 7, 10), "용산", "나주"), _leg("o", date(2026, 7, 9), "나주", "용산")],
                         base | {"workplace_region": "나주"}).period_reliable
+
+from receipt_evidence.workspace import TRASH_DIR, list_trash, purge_trash, restore_trip, trash_trip
+
+def _trip_with_out(tmp_path, trip_id="2026-07-09_서울"):
+    data, out = tmp_path / "data", tmp_path / "out"
+    d = data / "정백철" / trip_id; d.mkdir(parents=True); (d / "k.png").write_bytes(b"x"); (d / "trip.yaml").write_text("purpose: 회의\n", encoding="utf-8")
+    (data / "정백철" / "traveler.yaml").write_text("grade: 제2호\n", encoding="utf-8")
+    work = out / "정백철" / trip_id / "work"; work.mkdir(parents=True)
+    (work / "manifest.json").write_text(json.dumps([{"source_path": str(d / "k.png"), "png_path": str(work / "images/a.png")}], ensure_ascii=False), encoding="utf-8")
+    (out / "정백철" / trip_id / "latest.json").write_text('{"version": 2, "fingerprint": "f"}', encoding="utf-8")
+    return data, out, d
+
+def test_trash_restore_and_purge(tmp_path):
+    data, out, d = _trip_with_out(tmp_path)
+    tid = trash_trip(data, out, "정백철", "2026-07-09_서울", now=datetime(2026, 9, 14, 10, 0, 0))
+    assert tid == "20260914-100000_정백철_2026-07-09_서울" and not d.exists() and not (out / "정백철" / "2026-07-09_서울").exists()
+    assert (data / TRASH_DIR / tid / "data" / "k.png").exists() and (out / TRASH_DIR / tid / "latest.json").exists()
+    assert (data / "정백철" / "traveler.yaml").exists()  # 출장자 설정은 남긴다
+    assert discover(data)[0] == []  # 휴지통은 목록·CLI에서 빠진다
+    [entry] = list_trash(data)
+    assert (entry["id"], entry["traveler"], entry["trip_id"], entry["files"], entry["version"]) == (tid, "정백철", "2026-07-09_서울", 1, 2)
+    assert restore_trip(data, out, tid) == ("정백철", "2026-07-09_서울") and d.exists() and list_trash(data) == []
+    assert (out / "정백철" / "2026-07-09_서울" / "latest.json").exists()
+    tid2 = trash_trip(data, out, "정백철", "2026-07-09_서울", now=datetime(2026, 9, 14, 10, 5, 0))
+    purge_trash(data, out, tid2)
+    assert list_trash(data) == [] and not (out / TRASH_DIR / tid2).exists()
+    with pytest.raises(NotFound):
+        trash_trip(data, out, "정백철", "2026-07-09_서울")
+
+def test_restore_with_same_name_goes_to_suffix_and_fixes_paths(tmp_path):
+    data, out, d = _trip_with_out(tmp_path)
+    tid = trash_trip(data, out, "정백철", "2026-07-09_서울", now=datetime(2026, 9, 14, 11, 0, 0))
+    d.mkdir(parents=True); (d / "new.png").write_bytes(b"y")  # 지운 뒤 같은 이름으로 새로 만든 출장
+    assert restore_trip(data, out, tid) == ("정백철", "2026-07-09_서울_2")
+    m = json.loads((out / "정백철" / "2026-07-09_서울_2" / "work" / "manifest.json").read_text(encoding="utf-8"))[0]
+    assert m["source_path"] == str(data / "정백철" / "2026-07-09_서울_2" / "k.png") and (d / "new.png").exists()
+    with pytest.raises(NotFound):
+        restore_trip(data, out, "20990101-000000_없음_x")

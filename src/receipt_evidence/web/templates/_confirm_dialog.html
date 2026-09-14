@@ -1,0 +1,31 @@
+{# 공용 확인 팝업: data-confirm-action(POST 주소)·data-confirm-title·data-confirm-what·data-confirm-body·data-confirm-button 을 가진 링크/버튼 #}
+<dialog id="confirm-dialog" class="dialog" aria-labelledby="confirm-title">
+  <form method="post" class="stack" id="confirm-form">
+    <span class="sticker">잠깐!</span>
+    <h2 class="title title--sm" id="confirm-title" style="margin-top:6px"></h2>
+    <div class="hint" id="confirm-what" style="font-weight:800;color:var(--ink)"></div>
+    <div class="hint" id="confirm-body" style="font-size:14px"></div>
+    <div class="row"><button class="btn btn--danger" type="submit" id="confirm-ok"></button><button class="btn" type="button" id="confirm-cancel">취소</button></div>
+  </form>
+</dialog>
+<script>
+(function () {
+  var dlg = document.getElementById("confirm-dialog");
+  if (!dlg || typeof dlg.showModal !== "function") return;  // 팝업을 못 쓰면 링크가 확인 화면으로 이동
+  var form = document.getElementById("confirm-form");
+  document.getElementById("confirm-cancel").addEventListener("click", function () { dlg.close(); });
+  document.querySelectorAll("[data-confirm-action]").forEach(function (el) {
+    el.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      form.action = el.dataset.confirmAction;
+      document.getElementById("confirm-title").textContent = el.dataset.confirmTitle || "진행할까요?";
+      document.getElementById("confirm-what").textContent = el.dataset.confirmWhat || "";
+      document.getElementById("confirm-body").textContent = el.dataset.confirmBody || "";
+      document.getElementById("confirm-ok").textContent = el.dataset.confirmButton || "확인";
+      dlg.showModal();
+      document.getElementById("confirm-cancel").focus();
+    });
+  });
+})();
+</script>

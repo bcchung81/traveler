@@ -103,6 +103,22 @@ def register(app: FastAPI, settings, deps, render, trip_base, see_other) -> None
             return see_other(f"{trip_base(t, current_trip_id(job, trip))}/extract")
         return see_other(f"{trip_base(t, trip)}/upload")
 
+    @app.get("/t/{traveler}/{trip_id}/delete", response_class=HTMLResponse)
+    def delete_confirm(request: Request, traveler: str, trip_id: str):
+        """스크립트가 없는 브라우저용 삭제 확인 화면(보통은 같은 화면 팝업으로 확인)."""
+        status = existing(traveler, trip_id)
+        return render(request, "delete.html", status=status, action=f"{trip_base(status.traveler, status.trip_id)}/trash",
+                      back=f"{trip_base(status.traveler, status.trip_id)}/upload")
+
+    @app.post("/t/{traveler}/{trip_id}/trash")
+    def trash(traveler: str, trip_id: str):
+        status = existing(traveler, trip_id)
+        job = jobs.get(job_key(status.traveler, status.trip_id))
+        if job is not None and job.active:
+            raise ValueError("영수증을 읽거나 서류를 만드는 작업이 끝난 뒤에 지울 수 있어요")
+        trash_id = service.trash_trip(status.traveler, status.trip_id)
+        return see_other(f"/?trashed={quote(trash_id, safe='')}")
+
     @app.post("/t/{traveler}/{trip_id}/files/delete")
     async def delete_file(request: Request, traveler: str, trip_id: str):
         status = existing(traveler, trip_id)

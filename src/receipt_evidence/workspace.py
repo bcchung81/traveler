@@ -13,6 +13,7 @@ from .stations import city_name, place_of
 from .validate import FIELD_GROUP, mark_dup_approval, validate_receipt
 
 TRIP_DIR_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})_([^_]+)")
+TRASH_DIR = ".trash"  # data/.trash·out/.trash — 숨김 폴더라 목록·CLI에서 빠지고, 복구·영구 삭제를 고를 수 있다
 STAGING_PREFIX = "_새정산-"  # 웹에서 올린 직후의 임시 출장 폴더. 읽은 뒤 YYYY-MM-DD_출장지로 이름을 바꾼다
 TRIP_YAML_FIELDS = ("start_date", "end_date", "destination_region", "purpose", "route_stations", "lodging_region",
                     "over_cap_reason", "taxi_reason", "official_vehicle", "within_workplace", "duration_hours")
@@ -306,6 +307,18 @@ def resolve_moved(out_dir: Path, traveler: str, trip_id: str) -> str | None:
 def was_auto_named(out_dir: Path, traveler: str, trip_id: str) -> bool:
     return trip_id in {v for k, v in _read_renames(out_dir).items() if k.startswith(f"{traveler}/")}
 
+def _rewrite_work_paths(trip_out: Path, moves: list[tuple[Path, Path]]) -> None:
+    """out/<출장자>/<출장>/work 안 JSON·yaml의 옛 절대경로를 새 경로로 바꾼다(NFC·NFD 모두)."""
+    pairs = [(str(a), str(b)) for a, b in moves]
+    pairs += [(unicodedata.normalize("NFD", a), unicodedata.normalize("NFD", b)) for a, b in pairs]
+    for f in list((trip_out / "work").glob("*.json")) + list((trip_out / "work").glob("*.yaml")):
+        text = f.read_text(encoding="utf-8")
+        new_text = text
+        for a, b in pairs:
+            new_text = new_text.replace(a, b)
+        if new_text != text:
+            f.write_text(new_text, encoding="utf-8")
+
 def move_trip(data_dir: Path, out_dir: Path, traveler: str, old: str, new: str) -> str:
     """출장 폴더 이름을 바꾼다(data·out 함께). 이미 서류를 만든 출장은 바꾸지 않는다. out/work의 경로 문자열도 새 경로로 고친다."""
     src, dst = data_dir / traveler / old, data_dir / traveler / new
@@ -322,15 +335,7 @@ def move_trip(data_dir: Path, out_dir: Path, traveler: str, old: str, new: str) 
                 raise ValueError(f"같은 이름의 출장 결과가 이미 있어요: {new}")
             shutil.rmtree(dst_out)  # 데이터 폴더 없이 남은 예전 작업 찌꺼기
         src_out.rename(dst_out)
-        pairs = [(str(a), str(b)) for a, b in ((src, dst), (src_out, dst_out))]
-        pairs += [(unicodedata.normalize("NFD", a), unicodedata.normalize("NFD", b)) for a, b in pairs]
-        for f in list((dst_out / "work").glob("*.json")) + list((dst_out / "work").glob("*.yaml")):
-            text = f.read_text(encoding="utf-8")
-            new_text = text
-            for a, b in pairs:
-                new_text = new_text.replace(a, b)
-            if new_text != text:
-                f.write_text(new_text, encoding="utf-8")
+        _rewrite_work_paths(dst_out, [(src, dst), (src_out, dst_out)])
     renames = _read_renames(out_dir)
     renames[trip_key(traveler, old)] = new
     path = _renames_path(out_dir)
@@ -346,6 +351,82 @@ def dump_trip_yaml(trip: TripConfig) -> str:
 
 def load_overrides(trip_dir: Path) -> dict[str, dict]:
     return {str(k): (v or {}) for k, v in _yaml(trip_dir / "overrides.yaml").items()}
+
+# ---- 휴지통 ----
+
+_TRASH_ID_RE = re.compile(r"^\d{8}-\d{6}(-\d+)?_[^/\\]+$")
+
+def _trash_box(root: Path, trash_id: str) -> Path:
+    if not _TRASH_ID_RE.match(trash_id) or trash_id in (".", ".."):
+        raise NotFound(f"휴지통 항목 {trash_id}")
+    return root / TRASH_DIR / trash_id
+
+def trash_trip(data_dir: Path, out_dir: Path, traveler: str, trip_id: str, now: datetime | None = None) -> str:
+    """출장을 휴지통으로 옮긴다: data/.trash/<id>/data(영수증·yaml)+trash.json, out/.trash/<id>(서류·작업 파일)."""
+    src, src_out = data_dir / traveler / trip_id, out_dir / traveler / trip_id
+    if not src.is_dir():
+        raise NotFound(f"출장 {traveler}/{trip_id}")
+    base = f"{(now or datetime.now()):%Y%m%d-%H%M%S}"
+    tid, n = f"{base}_{traveler}_{trip_id}", 1
+    while (data_dir / TRASH_DIR / tid).exists() or (out_dir / TRASH_DIR / tid).exists():
+        n += 1
+        tid = f"{base}-{n}_{traveler}_{trip_id}"
+    latest = _read_json_file(src_out / "latest.json")
+    meta = {"id": tid, "traveler": traveler, "trip_id": trip_id, "deleted_at": (now or datetime.now()).isoformat(timespec="seconds"),
+            "files": sum(1 for p in src.iterdir() if _is_receipt(p)), "version": latest.get("version") if latest else None}
+    box = data_dir / TRASH_DIR / tid
+    box.mkdir(parents=True)
+    shutil.move(str(src), str(box / "data"))
+    if src_out.exists():
+        (out_dir / TRASH_DIR).mkdir(parents=True, exist_ok=True)
+        shutil.move(str(src_out), str(out_dir / TRASH_DIR / tid))
+    (box / "trash.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    return tid
+
+def _read_json_file(path: Path) -> dict | None:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return None
+
+def list_trash(data_dir: Path) -> list[dict]:
+    root = data_dir / TRASH_DIR
+    if not root.exists():
+        return []
+    items = [m for m in (_read_json_file(d / "trash.json") for d in root.iterdir() if d.is_dir()) if m]
+    return sorted(items, key=lambda m: m.get("deleted_at", ""), reverse=True)
+
+def restore_trip(data_dir: Path, out_dir: Path, trash_id: str) -> tuple[str, str]:
+    """휴지통에서 되돌린다. 같은 이름의 출장이 이미 있으면 _2로 되돌리고 작업 파일 경로를 고친다."""
+    box, obox = _trash_box(data_dir, trash_id), _trash_box(out_dir, trash_id)
+    meta = _read_json_file(box / "trash.json")
+    if not meta or not (box / "data").is_dir():
+        raise NotFound(f"휴지통 항목 {trash_id}")
+    traveler, old = meta["traveler"], meta["trip_id"]
+    target = old
+    n = 1
+    while (data_dir / traveler / target).exists() or (out_dir / traveler / target).exists():
+        n += 1
+        target = f"{old}_{n}"
+    (data_dir / traveler).mkdir(parents=True, exist_ok=True)
+    shutil.move(str(box / "data"), str(data_dir / traveler / target))
+    if obox.exists():
+        (out_dir / traveler).mkdir(parents=True, exist_ok=True)
+        shutil.move(str(obox), str(out_dir / traveler / target))
+        if target != old:
+            _rewrite_work_paths(out_dir / traveler / target, [(data_dir / traveler / old, data_dir / traveler / target),
+                                                               (out_dir / traveler / old, out_dir / traveler / target)])
+    shutil.rmtree(box)
+    return traveler, target
+
+def purge_trash(data_dir: Path, out_dir: Path, trash_id: str) -> None:
+    """휴지통 항목을 영구 삭제한다(되돌릴 수 없음)."""
+    box, obox = _trash_box(data_dir, trash_id), _trash_box(out_dir, trash_id)
+    if not box.exists() and not obox.exists():
+        raise NotFound(f"휴지통 항목 {trash_id}")
+    for d in (box, obox):
+        if d.exists():
+            shutil.rmtree(d)
 
 def _transcript(r: Receipt) -> str:
     try:

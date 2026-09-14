@@ -164,10 +164,18 @@ table.decisions tfoot td { border-top: 3px solid var(--ink); font-weight: 800; b
 /* 홈 */
 .traveler { display: flex; flex-direction: column; gap: 18px; }
 .trip-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
-.trip-card { text-decoration: none; color: var(--ink); min-height: 230px; justify-content: space-between; }
-.trip-card:hover { color: var(--ink); transform: translate(-2px, -2px); box-shadow: 8px 8px 0 var(--ink); }
-.trip-card__id { font-family: var(--font-title); font-size: 28px; line-height: 1.15; }
-.trip-card__amount { font-size: 44px; line-height: 1; }
+.trip-card { position: relative; color: var(--ink); min-height: 154px; padding: 16px 18px 14px; gap: 8px; justify-content: space-between; }  /* 230px → 2/3 */
+.trip-card:hover, .trip-card:focus-within { transform: translate(-2px, -2px); box-shadow: 8px 8px 0 var(--ink); }
+.trip-card__link { position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
+.trip-card__link:focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; }
+.trip-card__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.trip-card__id { font-family: var(--font-title); font-size: 22px; line-height: 1.15; overflow-wrap: anywhere; }
+.trip-card__delete { position: relative; z-index: 2; flex-shrink: 0; margin: -6px -8px 0 0; }
+.trip-card__meta { font-size: 13px; }
+.trip-card__bottom { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+.trip-card__chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.trip-card__money { display: flex; align-items: baseline; gap: 3px; white-space: nowrap; }
+.trip-card__amount { font-size: 30px; line-height: 1; }
 .empty { align-items: flex-start; padding: 40px; gap: 18px; }
 
 /* 첫 화면 최소 입력 · 자동 채움 */
@@ -187,7 +195,7 @@ table.decisions tfoot td { border-top: 3px solid var(--ink); font-weight: 800; b
 .input--inline { width: auto; min-width: 180px; flex: 1 1 180px; }
 .note-line { margin: 0; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--muted); }
 .chip--auto { background: var(--cyan); font-size: 11px; padding: 1px 8px; }
-.trip-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+.trip-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
 .basis-hint { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trip-summary summary, .docinfo-panel summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
 .trip-summary summary::-webkit-details-marker, .docinfo-panel summary::-webkit-details-marker { display: none; }
@@ -209,3 +217,9 @@ table.decisions tfoot td { border-top: 3px solid var(--ink); font-weight: 800; b
 .dialog::backdrop { background: rgba(8, 8, 12, 0.45); }
 .dialog .sticker { top: -20px; }
 .textarea { height: auto; min-height: 96px; padding-top: 10px; resize: vertical; line-height: 1.5; font-family: inherit; }
+
+/* 확인 팝업·휴지통 */
+.btn--danger { background: var(--magenta); color: var(--paper); }
+.trash-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 2px dashed rgba(8, 8, 12, 0.2); }
+.trash-row:first-of-type { border-top: 0; }
+.head-link { font-weight: 800; font-size: 14px; color: var(--muted); }
