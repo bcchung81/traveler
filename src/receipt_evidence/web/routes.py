@@ -172,10 +172,13 @@ def register_extract(app: FastAPI, settings, deps, render, trip_base, see_other)
         profile = service.load_profile(t)
         sug = service.trip_suggestion(t, trip)
         def field(key, saved_value):
+            # fill: 입력칸 배경 상태 — ai(영수증으로 채움)·guess(추정, 확인 권장)·user(확정·입력한 값)·empty(빈칸)
             if confirmed or not _blank_value(saved_value):
-                return {"value": saved_value, "auto": False, "basis": "", "guessed": False}
+                return {"value": saved_value, "auto": False, "basis": "", "guessed": False,
+                        "fill": "empty" if _blank_value(saved_value) else "user"}
             s = sug.get(key)
-            return {"value": s.value if s else None, "auto": bool(s), "basis": s.basis if s else "", "guessed": bool(s and s.guessed)}
+            return {"value": s.value if s else None, "auto": bool(s), "basis": s.basis if s else "", "guessed": bool(s and s.guessed),
+                    "fill": ("guess" if s.guessed else "ai") if s else "empty"}
         fields = {k: field(k, saved.get(k)) for k in ("start_date", "end_date", "destination_region", "lodging_region", "route_stations")}
         fields["workplace_region"] = field("workplace_region", profile.workplace_region)
         payers = sug["payer_names"].value if "payer_names" in sug else []

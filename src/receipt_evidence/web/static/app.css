@@ -224,3 +224,15 @@ table.decisions tfoot td { border-top: 3px solid var(--ink); font-weight: 800; b
 .trash-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 2px dashed rgba(8, 8, 12, 0.2); }
 .trash-row:first-of-type { border-top: 0; }
 .head-link { font-weight: 800; font-size: 14px; color: var(--muted); }
+
+/* 읽은 값 화면: 입력칸 배경으로 값의 출처 구분(색만으로 구분하지 않도록 범례·칩과 함께) */
+:root { --fill-ai: #DDF7F5; --fill-guess: #FFE9D6; --fill-user: #FFF3B8; }
+.fill--ai { background: var(--fill-ai); }
+.fill--guess { background: var(--fill-guess); border-color: var(--orange); }
+.fill--user { background: var(--fill-user); }
+.fill--empty { background: var(--white); border-style: dashed; border-color: rgba(8, 8, 12, 0.45); }
+.fill--edited { background: var(--fill-user); border-style: solid; border-color: var(--ink); box-shadow: inset 4px 0 0 var(--orange); }
+.fill-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.fill-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.fill-swatch { display: inline-block; width: 18px; height: 12px; border: 2px solid var(--ink); border-radius: 4px; }
+.fill-swatch.fill--empty { border: 2px dashed rgba(8, 8, 12, 0.45); }
