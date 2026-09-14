@@ -32,10 +32,10 @@ src/receipt_evidence/web/templates/review.html  정액 행 판정 바꾸기(일�
 
 ## Tasks
 ### Task 1: 코어
-- [ ] 테스트: period_reliable(왕복·편도·숙박 체크인아웃·폴더 날짜만), 확정 전 신뢰 기간 지급/비신뢰 확인필요, 정액 담당자 판정(일수·금액·0원·초과·사유 없음·근무지 내 일수 거부), 항공 식비 안내, fingerprint 안정성, report 내역
-- [ ] 구현 → 통과
+- [x] 테스트: period_reliable(왕복·편도·숙박 체크인아웃·폴더 날짜만), 확정 전 신뢰 기간 지급/비신뢰 확인필요, 정액 담당자 판정(일수·금액·0원·초과·사유 없음·근무지 내 일수 거부), 항공 식비 안내, fingerprint 안정성, report 내역
+- [x] 구현 → 통과
 ### Task 2: 웹
-- [ ] 테스트: save_allowance_decision 검증, 판정 표 계산식·정액 행 판정 바꾸기, JSON 오류(팝업), 저장 후 합계
-- [ ] 구현 → 통과, 실제 Chrome으로 팝업 확인
+- [x] 테스트: save_allowance_decision 검증, 판정 표 계산식·정액 행 판정 바꾸기, JSON 오류(팝업), 저장 후 합계
+- [x] 구현 → 통과, 실제 Chrome으로 팝업 확인
 ### Task 3: 문서·검증
-- [ ] README·SKILL·examples, 전체 테스트, 복사본 서버 확인, 서비스 정리
+- [x] README·SKILL·examples, 전체 테스트, 복사본 서버 확인, 서비스 정리
