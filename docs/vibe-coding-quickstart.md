@@ -9,7 +9,7 @@
 ```powershell
 winget install OpenJS.NodeJS.LTS   # Node.js — npx로 MCP 실행   (맥: brew install node)
 winget install astral-sh.uv        # uv — uvx로 MCP 실행          (맥: brew install uv)
-winget install Git.Git             # Git — 코드 이력·되돌리기(권장) (맥: 기본 포함)
+winget install --id Git.Git -e --source winget   # Git — 저장소 받기·이력·되돌리기 (맥: xcode-select --install)
 ```
 → **PowerShell을 닫고 새로 엽니다**(설치한 명령을 인식하게).
 
@@ -18,9 +18,10 @@ winget install Git.Git             # Git — 코드 이력·되돌리기(권장)
 irm https://claude.ai/install.ps1 | iex   # 공식 설치기(자동 업데이트) · 또는 winget install Anthropic.ClaudeCode
                                           # 맥: curl -fsSL https://claude.ai/install.sh | bash
 cd C:\작업폴더                             # 일할 프로젝트 폴더로 이동
+# 예) 이 저장소로 시작: git clone https://github.com/bcchung81/traveler.git ; cd traveler
 claude                                    # 처음 실행하면 브라우저 로그인 안내대로
 ```
-✅ 확인: `node -v` · `uv --version` · `claude --version` 셋 다 버전이 나오면 끝
+✅ 확인: `node -v` · `uv --version` · `git --version` · `claude --version` 넷 다 버전이 나오면 끝
 
 ### 3단계. MCP 붙이기 — AI에 '손'을 달기 (엑셀·한글·법령)
 ```powershell

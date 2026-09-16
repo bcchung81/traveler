@@ -21,18 +21,29 @@
 | 메모리 | 16GB 권장 (그래픽카드 메모리 6GB 이상이면 더 빠름) |
 | 그래픽카드 | 없어도 됩니다. NVIDIA는 CUDA, AMD·Intel은 Vulkan으로 자동 선택하고, GPU가 없으면 CPU로 읽습니다(느림) |
 | 인터넷 | 처음 설정할 때만 필요합니다 |
+| Git | 저장소를 받고 새 버전으로 올릴 때 씁니다 — 아래 1단계에서 설치 |
 
-설정 스크립트가 **uv(파이썬 3.14 포함) · Node.js · llama.cpp · Qwen3-VL 모델**을 모두 설치하므로 따로 받을 것은 없습니다.
-Node.js 설치에는 Windows 기본 '앱 설치 관리자'(`winget`)를 씁니다.
+**Git만 직접 설치**하면, 나머지 **uv(파이썬 3.14 포함) · Node.js · llama.cpp · Qwen3-VL 모델**은 설정 스크립트가 모두 설치합니다.
+설치에는 Windows 기본 '앱 설치 관리자'(`winget`)를 씁니다.
 
-### 1. 내려받기
+### 1. Git 설치하고 저장소 내려받기
 
-Git이 있으면:
+**① Git 설치** — 시작 메뉴에서 **PowerShell**을 열고:
 ```powershell
-git clone https://github.com/bcchung81/traveler.git
-cd traveler
+winget install --id Git.Git -e --source winget
 ```
-Git이 없으면 GitHub 페이지에서 **Code → Download ZIP**으로 받아 원하는 곳(예: `C:\traveler`)에 압축을 풉니다.
+- `winget`이 없으면 [git-scm.com/install/windows](https://git-scm.com/install/windows)에서 **Git for Windows/x64 Setup**을 받아 **기본값 그대로 [Next]** 로 설치합니다.
+- 설치가 끝나면 **PowerShell을 닫고 새로 연 뒤** `git --version`으로 버전이 나오는지 확인합니다.
+
+**② 저장소 내려받기**
+```powershell
+cd $HOME                                              # 내 사용자 폴더(C:\Users\이름)에 받기
+git clone https://github.com/bcchung81/traveler.git   # traveler 폴더가 생김
+cd traveler
+explorer .                                            # 탐색기로 폴더 열기 → 다음 단계의 setup-windows.bat
+```
+- Git을 쓰지 않으려면 [저장소 페이지](https://github.com/bcchung81/traveler)에서 **Code → Download ZIP**으로 받아 압축을 풀어도 됩니다(이 경우 새 버전은 다시 ZIP으로 받아야 함).
+- **새 버전 받기:** 저장소 폴더에서 `git pull` → `run-app.bat` 실행(바뀐 파이썬 패키지는 자동으로 맞춥니다).
 
 ### 2. 환경 설정 — `setup-windows.bat` 더블클릭
 
@@ -91,6 +102,8 @@ uv run receipt-evidence vlm --dry-run      # 쓸 llama-server·모델 경로 확
 ## macOS·Linux에서 시작하기
 
 ```bash
+git --version || xcode-select --install   # 맥은 Git이 없으면 설치 창이 뜬다 (또는 brew install git, 리눅스는 apt install git)
+git clone https://github.com/bcchung81/traveler.git && cd traveler
 uv sync
 brew install llama.cpp node          # 리눅스는 llama.cpp 릴리스·패키지와 Node.js 20.19+ 설치
 uvx --from huggingface_hub hf download Qwen/Qwen3-VL-4B-Instruct-GGUF Qwen3VL-4B-Instruct-Q4_K_M.gguf mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf
