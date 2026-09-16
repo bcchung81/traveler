@@ -1,8 +1,9 @@
 # tests/integration/test_mcp_live.py
 import pytest
-from receipt_evidence.mcp_client import law_caller, kordoc_caller
+from receipt_evidence.mcp_client import law_caller, law_oc, kordoc_caller
 
 @pytest.mark.integration
+@pytest.mark.skipif(not law_oc(), reason="LAW_OC(법제처 인증키) 미설정")
 def test_live_search_law():
     r = law_caller().call_many([("search_law", {"query": "공무원 여비 규정", "display": 5})])[0]
     assert not r.is_error and "MST: 287535" in r.text and "[현행]" in r.text

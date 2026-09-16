@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
-from .mcp_client import ToolCaller
+from .mcp_client import LAW_OC_URL, LawKeyMissing, ToolCaller, law_oc
 from .models import LawParams, LawSnapshot, RateTable
 
 LAW_NAME = "공무원 여비 규정"
@@ -175,11 +175,14 @@ class LawBook:
     checked_at: datetime | None = None
     error: str | None = None
     amendments: list[dict] = field(default_factory=list)
+    no_key: bool = False  # 법제처 인증키(LAW_OC)가 없어 조회하지 않음
 
     def notes(self) -> list[str]:
+        """서류에 남는 안내(사실만)."""
         if self.online:
             return []
-        return [f"인터넷에 연결되지 않아 {kdate(self.current.fetched_at.date())}에 조회해 둔 공무원 여비 규정({kdate(self.current.effective)} 시행)을 적용함"]
+        why = "법제처 인증키가 설정되지 않아" if self.no_key else "인터넷에 연결되지 않아"
+        return [f"{why} {kdate(self.current.fetched_at.date())}에 조회해 둔 공무원 여비 규정({kdate(self.current.effective)} 시행)을 적용함"]
 
     def for_date(self, d: date | None) -> tuple[LawSnapshot, list[str]]:
         """출장 시작일에 시행 중이던 규정. 받아 둔 것이 없으면 현행을 쓰고 안내만 붙인다(판정은 바꾸지 않음)."""
@@ -203,7 +206,11 @@ class LawBook:
         return head + " 금액이나 기준이 바뀌었을 수 있으니 판정 결과를 확인해 주세요."
 
     def notices(self, today: date) -> list[str]:
+        """화면·요약에만 보이는 안내(할 일 포함)."""
         out = [x for x in (self.amendment_notice(today),) if x]
+        if self.no_key:
+            out.append(f"법제처 인증키(LAW_OC)가 없어 최신 여비 규정을 조회하지 않았어요. {LAW_OC_URL} 에서 무료로 발급받아 설정하면 "
+                       "그날 현행 규정으로 판정해요 — 설정 방법은 README의 '법제처 인증키'를 보세요.")
         if not self.current.params.complete:
             out.append("규정 조문 문구가 바뀌어 일부 금액(근무지 내 출장·추가지급 한도 등)을 읽지 못했어요. 해당 항목은 확인필요로 둬요.")
         return out
@@ -216,12 +223,14 @@ def load_law_book(cache_dir: Path, today: date, *, now: datetime | None = None, 
     checked_at = datetime.fromisoformat(status["checked_at"])
     if not status["online"] and (now or datetime.now()) - checked_at >= OFFLINE_RETRY:
         return None
+    if status.get("no_key") and law_oc():
+        return None  # 그사이 인증키를 설정했으면 바로 다시 조회한다
     held = held_snapshots(cache_dir, baseline_dir)
     current = next((s for s in held if s.mst == status["mst"]), None)
     if current is None:
         return None
     return LawBook(current=current, snapshots=held, online=bool(status["online"]), checked_at=checked_at, error=status.get("error"),
-                   amendments=_read_json(_law_dir(cache_dir) / "amendments.json", []))
+                   amendments=_read_json(_law_dir(cache_dir) / "amendments.json", []), no_key=bool(status.get("no_key")))
 
 def peek_law_book(cache_dir: Path, *, baseline_dir: Path = BASELINE_DIR) -> LawBook | None:
     """조회 신선도와 상관없이 저장된 것만으로 만든다(홈 화면 배너용)."""
@@ -231,7 +240,7 @@ def peek_law_book(cache_dir: Path, *, baseline_dir: Path = BASELINE_DIR) -> LawB
     status = _read_json(_law_dir(cache_dir) / "status.json", {})
     current = next((s for s in held if s.mst == status.get("mst")), held[-1])
     return LawBook(current=current, snapshots=held, online=bool(status.get("online", True)), error=status.get("error"),
-                   amendments=_read_json(_law_dir(cache_dir) / "amendments.json", []))
+                   amendments=_read_json(_law_dir(cache_dir) / "amendments.json", []), no_key=bool(status.get("no_key")) and not law_oc())
 
 def get_law_book(caller: ToolCaller, cache_dir: Path, today: date, *, refresh: bool = False, now: datetime | None = None,
                  baseline_dir: Path = BASELINE_DIR) -> LawBook:
@@ -251,7 +260,7 @@ def get_law_book(caller: ToolCaller, cache_dir: Path, today: date, *, refresh: b
             raise LawUnavailable(f"여비 규정을 조회하지 못했고 저장해 둔 규정도 없어요: {e}") from e
         reason = " ".join(f"{type(e).__name__}: {e}".split())[:500]  # MCP 오류 문구의 줄바꿈을 한 줄로
         log.warning("법령 조회 실패 — 저장해 둔 규정(MST %s)을 사용: %s", held[-1].mst, reason)
-        _write_json(d / "status.json", status | {"online": False, "mst": held[-1].mst, "error": reason})
+        _write_json(d / "status.json", status | {"online": False, "mst": held[-1].mst, "error": reason, "no_key": isinstance(e, LawKeyMissing)})
     else:
         prev = held[-1] if held else None
         save_snapshot(snap, d / "snapshots" / f"{snap.mst}.json")

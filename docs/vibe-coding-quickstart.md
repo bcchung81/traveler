@@ -51,10 +51,14 @@ description: 부서별 실적 엑셀을 합칠 때 쓴다. 처음 보는 열이�
 ```
 부르는 법: AI가 `description`을 보고 알아서, 또는 `/report-merge`(이름은 영문 소문자·숫자·하이픈). 이 저장소 폴더에서 `claude`를 켜면 `receipt-evidence` 스킬이 자동으로 잡힙니다.
 
-### 5단계. 첫 지시
+### 5단계. 첫 지시 — 이 저장소를 Claude Code에게 실행시키기
+`cd $HOME\traveler` → `claude` 후 붙여 넣기(법제처 키는 채팅 말고 미리 `setx LAW_OC 발급키`):
 ```text
-> 영수증 사진을 읽어 합계를 엑셀로 정리하는 스크립트를 만들고, 테스트까지 돌려 줘
+> README.md의 'Windows에서 시작하기'대로 환경 설정을 해 줘. setup-windows.bat 대신 scripts\windows\setup.ps1을 실행하고 단계별 결과를 요약해 줘
+> 웹앱을 백그라운드로 켜고(uv run receipt-evidence app --no-browser) http://127.0.0.1:8780 이 열리면 알려 줘
+> 다 썼어. 웹앱과 로컬 AI를 끄고 포트가 비었는지 확인해 줘
 ```
+더 많은 예시(서류 만들기·문제 해결·새 버전 받기): [README — Claude Code에게 맡기기](../README.md#claude-code에게-설치실행-맡기기)
 
 ### 막히면 — PowerShell 오류 세 가지
 | 보이는 메시지 | 해결 |

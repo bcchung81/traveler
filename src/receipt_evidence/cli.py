@@ -131,11 +131,12 @@ def _prepare(out_dir: Path) -> int:
     with law_caller() as law, kordoc_caller() as doc:
         try:
             book = get_law_book(law, out_dir / ".cache", date.today(), refresh=True)
-            state = "최신본 조회함" if book.online else "조회 실패 — 저장해 둔 규정 사용"
+            state = "최신본 조회함" if book.online else ("법제처 인증키(LAW_OC) 없음 — 저장해 둔 규정 사용" if book.no_key else "조회 실패 — 저장해 둔 규정 사용")
             print(f"여비 규정: {state} (MST {book.current.mst}, {kdate(book.current.effective)} 시행)")
             if not book.online:
                 ok = False
-                print(f"  사유: {book.error}")
+                if not book.no_key:
+                    print(f"  사유: {book.error}")
             for n in book.notices(date.today()):
                 print(f"  ※ {n}")
         except LawUnavailable as e:
@@ -150,7 +151,8 @@ def _prepare(out_dir: Path) -> int:
     ready, msg = vlm_ready()
     ok = ok and ready
     print(f"로컬 AI: {msg}")
-    print("오프라인 준비 완료 — 인터넷이 없어도 영수증 읽기·판정·서류 만들기를 할 수 있어요" if ok else "일부 준비가 끝나지 않았어요. 인터넷 연결 후 다시 실행하세요")
+    print("오프라인 준비 완료 — 인터넷이 없어도 영수증 읽기·판정·서류 만들기를 할 수 있어요" if ok
+          else "일부 준비가 끝나지 않았어요(위 안내 참고). 인터넷 연결·인증키 설정 후 다시 실행하세요")
     return 0 if ok else 2
 
 def _serve_web(settings) -> None:

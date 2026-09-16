@@ -3,7 +3,8 @@ from datetime import date, datetime, timedelta
 import pytest
 from receipt_evidence.law import (parse_search, parse_annex2, html_table_rows, fetch_law_snapshot, get_law_book, load_law_book, parse_law_params,
                                   LawParseError, LawUnavailable, save_snapshot, load_snapshot, BASELINE_DIR)
-from receipt_evidence.mcp_client import FakeToolCaller
+from receipt_evidence.law import peek_law_book
+from receipt_evidence.mcp_client import FakeToolCaller, MissingKeyCaller
 
 def test_parse_search_current(law_fixture_text):
     assert parse_search(law_fixture_text["search_law.txt"]) == ("009402", "287535", date(2026, 6, 30), date(2026, 7, 1))
@@ -112,3 +113,18 @@ def test_law_book_records_amendment_and_picks_trip_date_version(law_fixture_text
     snap, notes = book.for_date(date(2026, 6, 20))
     assert snap.mst == "299999" and any("2026. 6. 20." in x and "현행" in x for x in notes)
     assert book.for_date(None)[0].mst == "299999"
+
+def test_law_book_without_key_uses_held_rules_and_says_why(law_fixture_text, tmp_path, monkeypatch):
+    # LAW_OC 기본값이 없다 — 키가 없으면 조회하지 않고 저장해 둔 규정으로 판정하며, 서류에는 사실만·화면에는 할 일을 알린다
+    monkeypatch.delenv("LAW_OC", raising=False)
+    now = datetime(2026, 9, 14, 9, 0)
+    book = get_law_book(MissingKeyCaller(), tmp_path, date(2026, 9, 14), now=now)
+    assert not book.online and book.no_key and book.current.mst == "287535" and "LAW_OC" in book.error
+    assert len(book.notes()) == 1 and "법제처 인증키가 설정되지 않아" in book.notes()[0] and "인터넷" not in book.notes()[0]
+    assert any("LAW_OC" in n and "open.law.go.kr" in n for n in book.notices(date(2026, 9, 14)))
+    assert peek_law_book(tmp_path).no_key
+    assert load_law_book(tmp_path, date(2026, 9, 14), now=now + timedelta(minutes=1)) is not None
+    monkeypatch.setenv("LAW_OC", "mine")  # 키를 넣으면 10분을 기다리지 않고 바로 다시 조회하고, 홈 배너도 내린다
+    assert load_law_book(tmp_path, date(2026, 9, 14), now=now + timedelta(minutes=1)) is None and not peek_law_book(tmp_path).no_key
+    fresh = get_law_book(_caller(law_fixture_text), tmp_path, date(2026, 9, 14), now=now + timedelta(minutes=1))
+    assert fresh.online and not fresh.no_key and fresh.notes() == []

@@ -1,7 +1,8 @@
 # tests/test_mcp_client.py
 import sys
 from pathlib import Path
-from receipt_evidence.mcp_client import FakeToolCaller, McpResult, StdioToolCaller, kordoc_caller, law_caller
+import pytest
+from receipt_evidence.mcp_client import FakeToolCaller, LawKeyMissing, McpResult, MissingKeyCaller, StdioToolCaller, kordoc_caller, law_caller
 
 ECHO = [str(Path(__file__).parent / "fixtures" / "echo_mcp_server.py")]
 
@@ -17,11 +18,18 @@ def test_fake_caller_unknown_tool_is_error_and_context_manager():
 def test_factory_commands_pin_versions_and_env(monkeypatch):
     for k in ("KOREAN_LAW_MCP", "KORDOC_MCP", "LAW_OC"):
         monkeypatch.delenv(k, raising=False)
+    with law_caller() as none:  # 인증키 기본값은 없다 — 서버를 띄우지 않고 사유를 알린다
+        assert isinstance(none, MissingKeyCaller)
+        with pytest.raises(LawKeyMissing, match="LAW_OC"):
+            none.call_many([("search_law", {"query": "공무원 여비 규정"})])
+    monkeypatch.setenv("LAW_OC", "  ")
+    assert isinstance(law_caller(), MissingKeyCaller)
+    monkeypatch.setenv("LAW_OC", "mine")
     l, k = law_caller(), kordoc_caller()
     assert isinstance(l, StdioToolCaller) and l.command == "npx" and l.lazy and k.lazy
-    assert l.args == ["-y", "--prefer-offline", "korean-law-mcp@4.13.0"] and l.env == {"LAW_OC": "kca-api"}
+    assert l.args == ["-y", "--prefer-offline", "korean-law-mcp@4.13.0"] and l.env == {"LAW_OC": "mine"}
     assert k.args == ["-y", "--prefer-offline", "kordoc@4.13.1", "mcp"] and k.env is None
-    monkeypatch.setenv("KOREAN_LAW_MCP", "korean-law-mcp@9.9.9"); monkeypatch.setenv("LAW_OC", "mine"); monkeypatch.setenv("KORDOC_MCP", "kordoc@1.0.0")
+    monkeypatch.setenv("KOREAN_LAW_MCP", "korean-law-mcp@9.9.9"); monkeypatch.setenv("KORDOC_MCP", "kordoc@1.0.0")
     assert law_caller().args[-1] == "korean-law-mcp@9.9.9" and law_caller().env == {"LAW_OC": "mine"} and kordoc_caller().args[2] == "kordoc@1.0.0"
 
 def test_lazy_session_starts_on_first_call_only():

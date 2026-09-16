@@ -42,6 +42,14 @@ function Update-SessionPath {
     $env:Path = ($parts | Where-Object { $_ }) -join ';'
 }
 
+# 설정 창에서 저장한 사용자 환경변수(예: LAW_OC)를, 그 전에 열린 창에서도 쓰게 가져온다
+function Import-UserVariable([string]$Name) {
+    if ($env:OS -ne 'Windows_NT') { return }
+    if ([Environment]::GetEnvironmentVariable($Name, 'Process')) { return }
+    $value = [Environment]::GetEnvironmentVariable($Name, 'User')
+    if ($value) { [Environment]::SetEnvironmentVariable($Name, $value, 'Process') }
+}
+
 # 외부 프로그램 실행: stderr에 진행 표시를 쓰는 프로그램(uv·hf·winget)이 PowerShell 5.1에서 오류로 바뀌지 않게 한다
 # 실행조차 못 하면(파일 없음·DLL 없음 등) 종료 코드 -1과 사유를 돌려준다
 function Invoke-Native([string]$File, [string[]]$ArgList) {

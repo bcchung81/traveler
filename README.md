@@ -5,7 +5,8 @@
 
 - [Windows에서 시작하기](#windows에서-시작하기) — 설정 파일 더블클릭 → 실행 파일 더블클릭
 - [macOS·Linux에서 시작하기](#macoslinux에서-시작하기)
-- [사용법](#사용법) · [인터넷 없이 쓰기](#인터넷-없이-쓰기) · [폴더 구조](#폴더-구조) · [테스트](#테스트)
+- [Claude Code에게 설치·실행 맡기기](#claude-code에게-설치실행-맡기기) — 그대로 붙여 넣는 프롬프트 예시
+- [사용법](#사용법) · [법제처 인증키](#법제처-인증키law_oc) · [인터넷 없이 쓰기](#인터넷-없이-쓰기) · [폴더 구조](#폴더-구조) · [테스트](#테스트)
 - 이 앱처럼 직접 만들어 보려면 → **[바이브코딩 따라하기](docs/vibe-coding-quickstart.md)** — Claude Code 설치 · MCP · 스킬 (1페이지, 15분)
 
 ---
@@ -22,6 +23,7 @@
 | 그래픽카드 | 없어도 됩니다. NVIDIA는 CUDA, AMD·Intel은 Vulkan으로 자동 선택하고, GPU가 없으면 CPU로 읽습니다(느림) |
 | 인터넷 | 처음 설정할 때만 필요합니다 |
 | Git | 저장소를 받고 새 버전으로 올릴 때 씁니다 — 아래 1단계에서 설치 |
+| 법제처 인증키 | 최신 여비 규정 조회용 `LAW_OC` — [open.law.go.kr](https://open.law.go.kr)에서 **각자 무료 발급**(없어도 저장소의 기준 규정으로 동작) → [발급·설정](#법제처-인증키law_oc) |
 
 **Git만 직접 설치**하면, 나머지 **uv(파이썬 3.14 포함) · Node.js · llama.cpp · Qwen3-VL 모델**은 설정 스크립트가 모두 설치합니다.
 설치에는 Windows 기본 '앱 설치 관리자'(`winget`)를 씁니다.
@@ -56,13 +58,14 @@ explorer .                                            # 탐색기로 폴더 열�
 | 3/6 파이썬 패키지 | `uv sync --frozen` — 파이썬 3.14와 패키지를 `.venv`에 설치 |
 | 4/6 llama.cpp | 로컬 AI 실행기 llama.cpp `b9740`을 `tools\llama.cpp`에 내려받고, GPU 인식 여부를 보여 줌 |
 | 5/6 모델 | Qwen3-VL-4B-Instruct(Q4_K_M)와 이미지 인코더(mmproj Q8_0)를 허깅페이스 캐시(`%USERPROFILE%\.cache\huggingface\hub`)에 내려받기 |
-| 6/6 점검 | `receipt-evidence prepare` — 최신 여비 규정 조회, HWPX 도구(kordoc)·규정 도구(korean-law-mcp) 내려받기, 전체 점검 |
+| 6/6 인증키·점검 | 법제처 인증키를 물어 사용자 환경변수 `LAW_OC`로 저장(없으면 Enter) → `receipt-evidence prepare` — 최신 여비 규정 조회, HWPX 도구(kordoc)·규정 도구(korean-law-mcp) 내려받기, 전체 점검 |
 
 - "Windows의 PC 보호" 창이 뜨면 **추가 정보 → 실행**을 누릅니다(인터넷에서 받은 .bat 파일이라 뜨는 안내).
 - 옵션은 명령 프롬프트에서 붙입니다.
   - `setup-windows.bat -DryRun` — 설치하지 않고 할 일만 보기
   - `setup-windows.bat -Backend vulkan -ReinstallLlama` — llama.cpp 빌드 바꾸기(`auto` · `cuda` · `vulkan` · `cpu`)
   - `setup-windows.bat -SkipModel` — 모델 내려받기 건너뛰기
+  - `setup-windows.bat -LawOc 발급키` — 법제처 인증키를 나중에 넣거나 바꾸기
 
 ### 3. 웹앱 실행 — `run-app.bat` 더블클릭
 
@@ -89,6 +92,7 @@ uv run receipt-evidence vlm --dry-run      # 쓸 llama-server·모델 경로 확
 | `llama-server를 실행하지 못했어요` | 스크립트가 Visual C++ 런타임을 설치해 다시 확인합니다. 그래도 안 되면 `setup-windows.bat -Backend cpu -ReinstallLlama` |
 | `GPU를 찾지 못해 CPU로 읽어요` / 읽기가 너무 느림 | 그래픽 드라이버를 최신으로 올린 뒤 `setup-windows.bat -ReinstallLlama`. NVIDIA인데 안 되면 `-Backend vulkan`도 시험 |
 | `로컬 AI: llama-server가 시작 중 종료됨` | `out\vlm.log` 끝부분 확인. 그래픽카드 메모리가 부족하면 `-Backend cpu -ReinstallLlama` |
+| `법제처 인증키(LAW_OC)가 없어…` 안내 | [법제처 인증키](#법제처-인증키law_oc)를 발급받아 `setup-windows.bat -LawOc 발급키` → `run-app.bat` 다시 실행 |
 | `포트 8780을(를) 다른 프로그램이 쓰고 있어요` | 이미 켜 둔 창이 있는지 확인하거나 `run-app.bat --port 8790` |
 | 백신이 `llama-server.exe`를 막음 | 저장소의 `tools\llama.cpp` 폴더를 검사 예외에 추가 |
 | 회사망에서 내려받기 실패 | 프록시가 있으면 명령 프롬프트에서 `set HTTPS_PROXY=http://프록시:포트` 후 `setup-windows.bat` 실행 |
@@ -96,6 +100,53 @@ uv run receipt-evidence vlm --dry-run      # 쓸 llama-server·모델 경로 확
 
 환경변수는 명령 프롬프트에서 `set 이름=값`, PowerShell에서 `$env:이름='값'`으로 지정한 뒤 같은 창에서 `run-app.bat`을 실행합니다.
 예: 8B 모델로 바꾸기 — `set VLM_VARIANT=8b` 후 `setup-windows.bat`(8B 모델 내려받기) → `run-app.bat`.
+
+---
+
+## Claude Code에게 설치·실행 맡기기
+
+위 단계를 직접 하지 않고 [Claude Code](docs/vibe-coding-quickstart.md)에게 한국어로 시킬 수도 있습니다.
+**저장소 폴더에서** Claude Code를 켜고(`cd $HOME\traveler` → `claude`), 아래 문장을 그대로 붙여 넣으세요. 명령을 실행하기 전에 허락을 물으면 내용을 보고 승인합니다.
+
+> 법제처 인증키는 채팅에 쓰지 말고, Claude Code를 켜기 **전에** PowerShell에서 `setx LAW_OC 발급키`로 넣어 두세요(맥: `~/.zshrc`에 `export LAW_OC=발급키`).
+
+**① 처음 설치 (Windows)**
+```text
+이 저장소 README.md의 'Windows에서 시작하기'대로 환경 설정을 진행해 줘.
+setup-windows.bat은 끝에서 키 입력을 기다리니, 대신 powershell -ExecutionPolicy Bypass -File scripts\windows\setup.ps1 로 실행해 줘.
+모델 내려받기처럼 오래 걸리면 백그라운드로 돌리고, 끝나면 1/6~6/6 단계별 결과를 표로 요약해 줘.
+실패한 단계가 있으면 README의 'Windows 문제 해결'을 보고 원인을 설명한 뒤 고쳐서 다시 실행해 줘.
+```
+
+**② 웹앱 켜기**
+```text
+여비정산 웹앱을 켜 줘. uv run receipt-evidence app --no-browser 를 백그라운드로 실행하고
+http://127.0.0.1:8780 이 응답하면 주소를 알려 줘. 로컬 AI가 안 뜨면 out\vlm.log 끝부분을 보고 원인을 알려 줘.
+```
+맥·리눅스는 `./run-app.sh start로 켜고 ./run-app.sh status로 확인해 줘`. Claude Code를 종료하면 백그라운드로 켠 웹앱도 함께 꺼질 수 있으니, 오래 쓸 때는 `run-app.bat`으로 켜세요.
+
+**③ 끄기 · 점검 · 새 버전**
+```text
+다 썼어. 켜 둔 웹앱과 로컬 AI를 끄고 8780·8088 포트가 비었는지 확인해 줘.
+```
+```text
+uv run receipt-evidence prepare 로 규정·HWPX 도구·로컬 AI 상태를 점검하고, 준비 안 된 항목과 해결 방법을 알려 줘.
+```
+```text
+git pull로 새 버전을 받고 uv run pytest가 통과하는지 확인한 다음 웹앱을 다시 켜 줘.
+```
+
+**④ 폴더의 영수증으로 서류 만들기** — 저장소에 든 `receipt-evidence` 스킬이 절차를 알려 줍니다.
+```text
+/receipt-evidence data\홍길동\2026-07-09_서울 폴더의 영수증으로 출장비 증빙서류(HWPX)를 만들어 줘.
+확인필요 항목은 임의로 채우지 말고 나한테 물어봐.
+```
+
+**⑤ 문제가 생겼을 때**
+```text
+영수증을 올렸는데 읽기가 실패해. out\vlm.log 와 화면의 오류 문구를 보고 원인을 찾아 줘.
+코드를 고쳐야 하면 무엇을 왜 바꿀지 먼저 설명하고, 고친 뒤 uv run pytest 로 확인해 줘.
+```
 
 ---
 
@@ -107,6 +158,7 @@ git clone https://github.com/bcchung81/traveler.git && cd traveler
 uv sync
 brew install llama.cpp node          # 리눅스는 llama.cpp 릴리스·패키지와 Node.js 20.19+ 설치
 uvx --from huggingface_hub hf download Qwen/Qwen3-VL-4B-Instruct-GGUF Qwen3VL-4B-Instruct-Q4_K_M.gguf mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf
+export LAW_OC=발급키                  # 법제처 인증키(없으면 기준 규정으로 동작) — 계속 쓰려면 ~/.zshrc에 추가
 uv run receipt-evidence prepare      # 여비 규정·MCP 패키지·로컬 AI 점검
 ```
 
@@ -166,6 +218,18 @@ uv run receipt-evidence run --traveler 홍길동 --trip 2026-07-09_서울 --work
 - 결과: `out/<출장자>/<출장>/v<N>/evidence.hwpx`, 요약 `out/summary-<run_id>.md`.
 - `--workers 4`로 동시에 읽으려면 로컬 AI도 같은 수로 켭니다: `VLM_PARALLEL=4 uv run receipt-evidence vlm`(Windows는 `set VLM_PARALLEL=4` 후 `uv run receipt-evidence vlm`).
 
+## 법제처 인증키(LAW_OC)
+
+최신 공무원 여비 규정은 법제처 Open API로 조회합니다. 인증키는 **발급받은 본인만** 쓸 수 있어 저장소에 기본값을 두지 않습니다.
+
+1. [open.law.go.kr](https://open.law.go.kr/LSO/openApi/guideList.do) 회원가입·로그인 → **Open API 사용 신청** → 인증키(OC) 발급(무료)
+2. 설정
+   - Windows: `setup-windows.bat` 6/6 단계에서 입력, 또는 `setup-windows.bat -LawOc 발급키`(사용자 환경변수 `LAW_OC`로 저장, `run-app.bat`이 자동으로 씀)
+   - 맥·리눅스: `export LAW_OC=발급키`(계속 쓰려면 `~/.zshrc`·`~/.bashrc`에 추가)
+3. 확인: `uv run receipt-evidence prepare` → `여비 규정: 최신본 조회함`
+
+인증키가 없으면 조회하지 않고 받아 둔 가장 최근 규정(처음에는 저장소 기준본, 2026. 7. 1. 시행)으로 판정합니다. 서류에는 "법제처 인증키가 설정되지 않아 … 규정을 적용함"이 남고, 화면에는 설정 안내가 뜹니다. 키를 넣으면 다음 조회부터 바로 현행 규정을 씁니다.
+
 ## 인터넷 없이 쓰기
 인터넷이 될 때 한 번 준비해 두면(`setup-windows.bat` 또는 아래 명령) 이후에는 오프라인으로 끝까지 정산할 수 있습니다.
 ```bash
@@ -181,7 +245,7 @@ uv run receipt-evidence prepare      # 최신 여비 규정 조회 · MCP 패키
 - 규정은 하루 한 번 현행본을 조회합니다. 조회에 실패하면 10분 동안은 다시 조회하지 않고 저장해 둔 규정을 씁니다(`--refresh-law`로 즉시 재조회).
 - 받은 규정은 버전(MST)별로 `out/.cache/law/snapshots/`에 쌓이고, 출장 시작일에 시행되던 규정으로 판정합니다. 그 규정이 없으면 현행 규정으로 판정하고 안내만 붙입니다.
 - 개정이 감지되면(`out/.cache/law/amendments.json`) 홈·판정 화면과 요약에 알립니다. 근무지 내 출장 금액·추가지급 한도 등은 조문 본문에서 읽고, 문구가 바뀌어 못 읽으면 해당 항목을 확인필요로 둡니다.
-- 환경변수: `KOREAN_LAW_MCP`(기본 `korean-law-mcp@4.13.0`), `KORDOC_MCP`(기본 `kordoc@4.13.1`), `LAW_OC`(국가법령정보 공동활용 OC).
+- 환경변수: `KOREAN_LAW_MCP`(기본 `korean-law-mcp@4.13.0`), `KORDOC_MCP`(기본 `kordoc@4.13.1`), `LAW_OC`(법제처 Open API 인증키 — 기본값 없음, [발급·설정](#법제처-인증키law_oc)).
 
 ## 폴더 구조
 ```

@@ -12,6 +12,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'common.ps1')
 Set-Location $Root
 Update-SessionPath
+Import-UserVariable 'LAW_OC'  # setup-windows.bat에서 저장한 법제처 인증키
 
 if (-not (Test-Command uv)) { Stop-WithError 'uv가 없어요 — 먼저 setup-windows.bat을 실행하세요' }
 if (-not (Test-Path (Join-Path $Root '.venv'))) { Stop-WithError '아직 설정 전이에요 — 먼저 setup-windows.bat을 실행하세요' }

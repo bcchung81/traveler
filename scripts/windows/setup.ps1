@@ -16,17 +16,28 @@
 .PARAMETER SkipModel
   모델(약 3GB) 내려받기를 건너뛴다
 
+.PARAMETER LawOc
+  법제처 Open API 인증키(OC). https://open.law.go.kr 에서 각자 무료 발급. 주면 사용자 환경변수 LAW_OC로 저장한다.
+  없으면 최신 규정을 조회하지 않고 저장소에 들어 있는 기준 규정으로 판정한다.
+
+.PARAMETER Interactive
+  인증키가 없을 때 입력을 묻는다(setup-windows.bat이 붙인다. Claude Code 등에서 직접 실행할 때는 빼서 멈추지 않게 한다)
+
 .PARAMETER DryRun
   설치·내려받기 없이 무엇을 할지만 보여 준다
 
 .EXAMPLE
   setup-windows.bat -Backend vulkan -ReinstallLlama
+.EXAMPLE
+  powershell -ExecutionPolicy Bypass -File scripts\windows\setup.ps1 -LawOc 발급키
 #>
 param(
     [ValidateSet('auto', 'cuda', 'vulkan', 'cpu')] [string]$Backend = 'auto',
     [string]$LlamaBuild = 'b9740',
     [switch]$ReinstallLlama,
     [switch]$SkipModel,
+    [string]$LawOc,
+    [switch]$Interactive,
     [switch]$DryRun
 )
 
@@ -65,6 +76,7 @@ Write-Info "저장소 폴더: $Root"
 if ($DryRun) { Write-Warn 'DryRun: 설치·내려받기를 하지 않고 할 일만 보여 줍니다' }
 if ($env:OS -eq 'Windows_NT' -and -not [Environment]::Is64BitOperatingSystem) { Stop-WithError '64비트 Windows 10/11이 필요해요' }
 Update-SessionPath
+Import-UserVariable 'LAW_OC'
 
 # ---------------------------------------------------------------- 1. uv
 Write-Step '1/6' 'uv (파이썬과 패키지 관리)'
@@ -208,8 +220,27 @@ if ($DryRun -and -not (Test-Path (Join-Path $Root '.venv'))) {
     }
 }
 
-# ---------------------------------------------------------------- 6. 규정·HWPX 도구
-Write-Step '6/6' '여비 규정 조회 · HWPX 도구(kordoc) 내려받기 · 전체 점검 (receipt-evidence prepare)'
+# ---------------------------------------------------------------- 6. 인증키·규정·HWPX 도구
+Write-Step '6/6' '법제처 인증키 · 여비 규정 조회 · HWPX 도구(kordoc) 내려받기 · 전체 점검 (receipt-evidence prepare)'
+$oc = if ($LawOc) { $LawOc.Trim() } else { "$env:LAW_OC".Trim() }
+if (-not $oc -and $Interactive -and -not $DryRun) {
+    Write-Info '최신 여비 규정을 조회하려면 법제처 Open API 인증키(OC)가 필요해요(무료, 발급받은 본인만 사용).'
+    Write-Info '발급: https://open.law.go.kr 회원가입·로그인 → OPEN API → Open API 사용 신청'
+    $oc = "$(Read-Host '      인증키(OC)를 입력하세요. 아직 없으면 그냥 Enter')".Trim()
+}
+if ($oc) {
+    $saved = if ($env:OS -eq 'Windows_NT') { [Environment]::GetEnvironmentVariable('LAW_OC', 'User') } else { $null }
+    if ($saved -ne $oc) {
+        Invoke-Change '인증키를 사용자 환경변수 LAW_OC로 저장(다음부터 run-app.bat이 자동으로 씀)' {
+            if ($env:OS -eq 'Windows_NT') { [Environment]::SetEnvironmentVariable('LAW_OC', $oc, 'User') }
+        }
+    }
+    $env:LAW_OC = $oc
+    Write-Ok '법제처 인증키(LAW_OC) 설정됨'
+} else {
+    Write-Warn '인증키 없이 진행 — 저장소에 들어 있는 기준 규정(2026. 7. 1. 시행)으로 판정해요'
+    Write-Info '나중에 넣으려면: setup-windows.bat -LawOc 발급키'
+}
 Invoke-Change 'uv run receipt-evidence prepare (처음에는 npm 패키지 내려받기로 1~2분)' {
     New-Item -ItemType Directory -Force -Path (Join-Path $Root 'data') | Out-Null
     $code = Invoke-Native uv @('run', '--frozen', 'receipt-evidence', 'prepare')

@@ -20,7 +20,7 @@
 - 버전 상수: `PROMPT_VERSION = "p1"`(cache.py), `RULES_VERSION = "r1"`(rules.py) — 프롬프트·규칙을 바꾸면 올린다
 - VLM 모델: `/Users/bcchung81/.cache/huggingface/hub/models--Qwen--Qwen3-VL-8B-Instruct-GGUF/snapshots/f982a07559d4a2f6c8744d840bf6fccab30eea96/Qwen3VL-8B-Instruct-Q4_K_M.gguf`, mmproj 동일 폴더 `mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf`
 - llama-server 포트 `8088`, 호스트 `127.0.0.1`, alias `qwen3-vl`, `temperature 0`, 병렬 슬롯 `VLM_PARALLEL`(기본 1) = CLI `--workers`
-- MCP 실행: korean-law = `npx -y korean-law-mcp` (env `LAW_OC=kca-api`), kordoc = `npx -y kordoc mcp`. 배치에서는 `with` 세션으로 1회만 기동
+- MCP 실행: korean-law = `npx -y korean-law-mcp` (env `LAW_OC=발급키`), kordoc = `npx -y kordoc mcp`. 배치에서는 `with` 세션으로 1회만 기동
 - 법령: 「공무원 여비 규정」 검색어 `공무원 여비 규정`, 조문 `제12조·제13조·제16조·제18조`, 별표 `1·2`. `[현행]` 표기 없는 결과는 사용 금지
 - 개인정보: 이미지·전사문은 로컬 전용. 로그에 전사문·카드번호·이메일 기록 금지. 16자리 연속 숫자는 마스킹. 보고서에 카드번호 미기재
 - `.gitignore`: `out/`, `data/`, `.venv/`, `*.hwpx`, `__pycache__/`, `.pytest_cache/`, `*.egg-info/`, `.DS_Store`, `design/receipt-evidence-ui/receipt-evidence-screen.html`
@@ -1022,7 +1022,7 @@ def test_fake_caller_unknown_tool_is_error_and_context_manager():
 
 def test_factory_commands():
     l, k = law_caller(), kordoc_caller()
-    assert isinstance(l, StdioToolCaller) and l.command == "npx" and l.args == ["-y", "korean-law-mcp"] and l.env == {"LAW_OC": "kca-api"}
+    assert isinstance(l, StdioToolCaller) and l.command == "npx" and l.args == ["-y", "korean-law-mcp"] and l.env == {"LAW_OC": "발급키"}
     assert k.args == ["-y", "kordoc", "mcp"] and k.env is None
 
 def test_stdio_oneshot_spawns_per_call():
@@ -1169,7 +1169,7 @@ class StdioToolCaller:
         self._thread = None
 
 def law_caller() -> StdioToolCaller:
-    return StdioToolCaller("npx", ["-y", "korean-law-mcp"], {"LAW_OC": "kca-api"})
+    return StdioToolCaller("npx", ["-y", "korean-law-mcp"], {"LAW_OC": "발급키"})
 
 def kordoc_caller() -> StdioToolCaller:
     return StdioToolCaller("npx", ["-y", "kordoc", "mcp"], None)

@@ -131,10 +131,34 @@ class StdioToolCaller:
 # 버전을 고정해 결과를 재현하고, --prefer-offline으로 받아 둔 패키지를 먼저 쓴다(인터넷이 없어도 기동). 환경변수로 바꿀 수 있다.
 KOREAN_LAW_MCP = "korean-law-mcp@4.13.0"
 KORDOC_MCP = "kordoc@4.13.1"
+LAW_OC_URL = "https://open.law.go.kr"  # 법제처 Open API 인증키(OC)는 각자 무료 발급 — 발급받은 본인만 쓸 수 있어 기본값을 두지 않는다
 
-def law_caller() -> StdioToolCaller:
-    return StdioToolCaller("npx", ["-y", "--prefer-offline", os.environ.get("KOREAN_LAW_MCP", KOREAN_LAW_MCP)],
-                           {"LAW_OC": os.environ.get("LAW_OC", "kca-api")}, lazy=True)
+class LawKeyMissing(RuntimeError):
+    """법제처 Open API 인증키(LAW_OC)가 설정되지 않아 법령을 조회할 수 없음."""
+
+def law_oc() -> str:
+    return os.environ.get("LAW_OC", "").strip()
+
+class MissingKeyCaller:
+    """LAW_OC가 없을 때의 법령 도구. 서버를 띄우지 않고 바로 LawKeyMissing을 낸다(저장해 둔 규정으로 판정이 이어진다)."""
+
+    def __enter__(self) -> "MissingKeyCaller":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        return None
+
+    def ensure_started(self) -> None:
+        return None
+
+    def call_many(self, calls: list[tuple[str, dict]]) -> list[McpResult]:
+        raise LawKeyMissing(f"법제처 Open API 인증키(LAW_OC)가 설정되지 않았어요 — {LAW_OC_URL} 에서 무료로 발급받아 LAW_OC 환경변수로 지정하세요")
+
+def law_caller() -> StdioToolCaller | MissingKeyCaller:
+    oc = law_oc()
+    if not oc:
+        return MissingKeyCaller()
+    return StdioToolCaller("npx", ["-y", "--prefer-offline", os.environ.get("KOREAN_LAW_MCP", KOREAN_LAW_MCP)], {"LAW_OC": oc}, lazy=True)
 
 def kordoc_caller() -> StdioToolCaller:
     return StdioToolCaller("npx", ["-y", "--prefer-offline", os.environ.get("KORDOC_MCP", KORDOC_MCP), "mcp"], None, lazy=True)
