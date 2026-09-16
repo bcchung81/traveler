@@ -1,0 +1,6 @@
+# Windows 스크립트는 받은 그대로(CRLF, .ps1은 UTF-8 BOM) 둔다 — git clone과 GitHub ZIP 내려받기 모두 같은 바이트
+*.bat -text
+*.cmd -text
+*.ps1 -text
+# 맥·리눅스 스크립트는 LF
+*.sh text eol=lf

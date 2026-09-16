@@ -1,10 +1,10 @@
 # src/receipt_evidence/cli.py
 from __future__ import annotations
-import argparse, logging, os, shutil, sys
+import argparse, logging, os, subprocess, sys, threading, time
 from datetime import date
 from pathlib import Path
 from .law import LawUnavailable, get_law_book, kdate
-from . import vlm_models
+from . import vlm_server
 from .mcp_client import kordoc_caller, law_caller
 from .pipeline import Clients, RunOptions, run_batch
 from .vlm import LlamaServerClient
@@ -38,18 +38,92 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--data", default="data")
     w.add_argument("--out", default="out")
     w.add_argument("--vlm-url", dest="vlm_url", default="http://127.0.0.1:8088")
+    ap = sub.add_parser("app", help="로컬 AI와 웹앱을 함께 켜고 브라우저를 연다. Ctrl+C나 창 닫기로 둘 다 끈다(Windows run-app.bat)")
+    ap.add_argument("--port", type=int, default=8780, help="웹앱 포트 (기본 8780)")
+    ap.add_argument("--vlm-port", dest="vlm_port", type=int, default=8088, help="로컬 AI 포트 (기본 8088)")
+    ap.add_argument("--data", default="data")
+    ap.add_argument("--out", default="out")
+    ap.add_argument("--no-browser", dest="no_browser", action="store_true", help="브라우저를 열지 않는다")
+    v = sub.add_parser("vlm", help="로컬 AI(llama-server)를 이 창에서 켠다(Ctrl+C로 끔). 맥·리눅스 scripts/start_vlm.sh와 같은 설정")
+    v.add_argument("--port", type=int, default=int(os.environ.get("VLM_PORT") or 8088))
+    v.add_argument("--dry-run", dest="dry_run", action="store_true", help="켜지 않고 쓸 실행 파일·모델 경로만 보여 준다(없으면 종료 코드 1)")
     return p
 
 def vlm_ready() -> tuple[bool, str]:
     """llama-server 실행 파일과 운영 모델(VLM_VARIANT, 기본 Qwen3-VL 4B) 파일이 이 컴퓨터에 있는지."""
-    if shutil.which("llama-server") is None:
-        return False, "llama-server 실행 파일이 없어요(llama.cpp 설치 필요)"
-    variant = vlm_models.current()
-    model, mmproj = variant.paths()
-    model = Path(os.environ["VLM_MODEL"]) if os.environ.get("VLM_MODEL") else model
-    if model and model.exists() and (mmproj or os.environ.get("VLM_MMPROJ")):
-        return True, f"{variant.label} 모델 파일 있음: {model}"
-    return False, f"{variant.label} 모델 파일을 찾지 못했어요 — huggingface-cli download {variant.repo} {variant.model_file} {variant.mmproj_file}"
+    plan = vlm_server.plan()
+    if problem := plan.problem():
+        return False, problem
+    return True, f"{plan.variant.label} 모델 파일 있음: {plan.model} (llama-server: {plan.executable})"
+
+def _vlm(a) -> int:
+    plan = vlm_server.plan()
+    if a.dry_run:  # setup-windows.bat이 모델을 내려받을지 이 출력으로 정한다
+        v = plan.variant
+        print(f"variant={v.key}\nrepo={v.repo}\nfiles={v.model_file} {v.mmproj_file}")
+        print(f"llama_server={plan.executable or ''}\nmodel={plan.model or ''}\nmmproj={plan.mmproj or ''}")
+    try:
+        cmd = vlm_server.command(a.port, plan)
+    except vlm_server.VlmSetupError as e:
+        print(f"로컬 AI: {e}", file=sys.stderr)
+        return 1
+    if a.dry_run:
+        return 0
+    print(f"로컬 AI: http://127.0.0.1:{a.port} {plan.variant.label} (끄기: Ctrl+C)")
+    try:
+        return subprocess.run(cmd).returncode
+    except KeyboardInterrupt:
+        return 0
+
+def _port_busy(port: int) -> bool:
+    import socket
+    with socket.socket() as s:
+        s.settimeout(0.5)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+def _open_browser_when_ready(url: str, seconds: float = 60.0) -> None:
+    import httpx, webbrowser
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        try:
+            httpx.get(url, timeout=1.0)
+            webbrowser.open(url)
+            return
+        except httpx.HTTPError:
+            time.sleep(0.5)
+
+def _app(a) -> int:
+    """run-app.sh start의 창 하나짜리 판: 로컬 AI를 켜고 준비되면 웹앱을 켠다. 끝날 때 이 명령이 켠 로컬 AI만 끈다."""
+    from .web.app import WebSettings
+    web_url, vlm_url = f"http://127.0.0.1:{a.port}", f"http://127.0.0.1:{a.vlm_port}"
+    if _port_busy(a.port):
+        print(f"웹앱: 포트 {a.port}을(를) 다른 프로그램이 쓰고 있어요. 이미 켜 둔 창이 있으면 {web_url} 을 여세요(다른 번호: --port 8790)", file=sys.stderr)
+        return 2
+    vlm = default_vlm_manager(vlm_url)
+    if vlm.health():
+        print(f"로컬 AI: 이미 실행 중 — :{a.vlm_port}")
+    elif _port_busy(a.vlm_port):
+        print(f"로컬 AI: 포트 {a.vlm_port}을(를) 다른 프로그램이 쓰고 있어요(다른 번호: --vlm-port 8089)", file=sys.stderr)
+        return 2
+    else:
+        wait = float(os.environ.get("VLM_WAIT") or 180)
+        print(f"로컬 AI: 켜는 중 — :{a.vlm_port} {vlm_server.plan().variant.label} (모델 로딩 최대 {int(wait)}초)")
+        try:
+            vlm.ensure_ready(timeout=wait)
+        except RuntimeError as e:
+            print(f"로컬 AI: {e}", file=sys.stderr)
+            if tail := vlm_server.log_tail():
+                print(tail, file=sys.stderr)
+            return 2
+        print("로컬 AI: 준비됨")
+    try:
+        if not a.no_browser:
+            threading.Thread(target=_open_browser_when_ready, args=(web_url,), daemon=True).start()
+        print("이 창을 닫거나 Ctrl+C를 누르면 웹앱과 로컬 AI가 함께 꺼져요")
+        _serve_web(WebSettings(data_dir=Path(a.data), out_dir=Path(a.out), port=a.port, vlm_url=vlm_url))
+    finally:
+        vlm.stop()  # 이 명령이 켠 llama-server만 끈다
+    return 0
 
 def _prepare(out_dir: Path) -> int:
     logging.getLogger("receipt_evidence").addHandler(logging.NullHandler())  # 결과는 아래에서 직접 알린다(같은 경고를 두 번 찍지 않게)
@@ -89,10 +163,14 @@ def main(argv: list[str] | None = None) -> int:
     a = build_parser().parse_args(argv)
     if a.cmd == "check-vlm":
         ok = LlamaServerClient(a.vlm_url).healthy()
-        print("llama-server OK" if ok else f"llama-server 응답 없음({a.vlm_url}). scripts/start_vlm.sh 실행 필요")
+        print("llama-server OK" if ok else f"llama-server 응답 없음({a.vlm_url}). receipt-evidence vlm(맥·리눅스: scripts/start_vlm.sh)으로 켜세요")
         return 0 if ok else 2
     if a.cmd == "prepare":
         return _prepare(Path(a.out))
+    if a.cmd == "vlm":
+        return _vlm(a)
+    if a.cmd == "app":
+        return _app(a)
     if a.cmd == "web":
         if a.host not in LOOPBACK:
             print("웹앱은 이 컴퓨터에서만 열 수 있어요(--host 127.0.0.1 · localhost · ::1)", file=sys.stderr)

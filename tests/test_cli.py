@@ -91,3 +91,58 @@ def test_prepare_fetches_law_and_starts_mcp_packages(monkeypatch, capsys, tmp_pa
             raise RuntimeError("ENOTFOUND")
     monkeypatch.setattr(cli, "law_caller", lambda: Down({}))
     assert cli.main(["prepare", "--out", str(tmp_path / "out")]) == 2 and "저장해 둔 규정" in capsys.readouterr().out
+
+class _FakeManager:
+    def __init__(self, healthy=False, error=None):
+        self.healthy, self.error, self.events = healthy, error, []
+    def health(self):
+        return self.healthy
+    def ensure_ready(self, timeout=180.0, poll=1.0):
+        self.events.append("ensure")
+        if self.error:
+            raise RuntimeError(self.error)
+    def stop(self):
+        self.events.append("stop")
+
+def _patch_app(monkeypatch, manager, busy=()):
+    served = {}
+    monkeypatch.setattr(cli, "default_vlm_manager", lambda url: manager.events.append(url) or manager)
+    monkeypatch.setattr(cli, "_port_busy", lambda port: port in busy)
+    def serve(settings):
+        manager.events.append("serve")
+        served["s"] = settings
+    monkeypatch.setattr(cli, "_serve_web", serve)
+    return served
+
+def test_app_starts_vlm_then_web_and_stops_vlm_after(monkeypatch, capsys):
+    m = _FakeManager()
+    served = _patch_app(monkeypatch, m)
+    assert cli.main(["app", "--no-browser", "--port", "8790", "--vlm-port", "8089"]) == 0
+    assert m.events == ["http://127.0.0.1:8089", "ensure", "serve", "stop"]
+    assert served["s"].port == 8790 and served["s"].vlm_url == "http://127.0.0.1:8089" and served["s"].host == "127.0.0.1"
+    assert "함께 꺼져요" in capsys.readouterr().out
+
+def test_app_refuses_busy_ports_and_reports_vlm_failure(monkeypatch, capsys):
+    m = _FakeManager()
+    _patch_app(monkeypatch, m, busy={8780})
+    assert cli.main(["app", "--no-browser"]) == 2 and "serve" not in m.events and "8780" in capsys.readouterr().err
+    m = _FakeManager()
+    _patch_app(monkeypatch, m, busy={8088})
+    assert cli.main(["app", "--no-browser"]) == 2 and "ensure" not in m.events
+    m = _FakeManager(error="로컬 AI를 켤 수 없어요: llama-server 실행 파일이 없어요")
+    _patch_app(monkeypatch, m)
+    assert cli.main(["app", "--no-browser"]) == 2 and "serve" not in m.events and "llama-server 실행 파일" in capsys.readouterr().err
+    m = _FakeManager(healthy=True)  # 이미 켜 둔 로컬 AI는 그대로 쓴다
+    _patch_app(monkeypatch, m, busy={8088})
+    assert cli.main(["app", "--no-browser"]) == 0 and "ensure" not in m.events and "serve" in m.events
+
+def test_vlm_dry_run_prints_paths_for_setup_script(monkeypatch, capsys, tmp_path):
+    from receipt_evidence import vlm_server
+    for k in ("LLAMA_SERVER", "VLM_MODEL", "VLM_MMPROJ", "VLM_VARIANT"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    monkeypatch.setattr(vlm_server, "LOCAL_LLAMA_DIR", tmp_path / "tools")
+    assert cli.main(["vlm", "--dry-run"]) == 1
+    out = capsys.readouterr()
+    assert "repo=Qwen/Qwen3-VL-4B-Instruct-GGUF" in out.out and "llama_server=\n" in out.out and "llama-server 실행 파일" in out.err

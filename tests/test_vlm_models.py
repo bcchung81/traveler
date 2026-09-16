@@ -51,3 +51,10 @@ def test_extract_cache_is_separated_per_model(tmp_path, monkeypatch):
     assert c8.has("legacy") and c8.get("legacy") == {"transcript": "", "data": {}}  # 8B로 읽어 둔 예전 캐시(모델 폴더 이전)
     monkeypatch.setenv("VLM_VARIANT", "4b")
     assert not ExtractCache(tmp_path).has("legacy")
+
+def test_hf_hub_follows_hf_download_cache_env(monkeypatch, tmp_path):
+    monkeypatch.delenv("HF_HUB_CACHE", raising=False)
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "hf"))
+    assert vlm_models.hf_hub() == tmp_path / "hf" / "hub"
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+    assert vlm_models.hf_hub() == tmp_path / "hub"

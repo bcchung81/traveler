@@ -14,6 +14,7 @@ description: data/<출장자>/<출장>/ 폴더의 영수증을 로컬 Qwen3-VL�
 
 ## 웹앱으로 하기
 - 켜기 `./run-app.sh start`: 로컬 AI(llama-server :8088)를 켜고 준비되면 웹앱(http://127.0.0.1:8780)을 켠다. 끄기 `./run-app.sh stop`: 둘 다 끈다(`status`·`restart`도 있음). 쓰고 나면 반드시 `./run-app.sh stop`.
+- Windows: 처음 한 번 `setup-windows.bat`(uv·Node.js·llama.cpp·모델 설치) → `run-app.bat`(= `uv run receipt-evidence app`, 창을 닫거나 Ctrl+C로 둘 다 끔).
 - 스크립트 없이 `uv run receipt-evidence web`만 띄우면 로컬 AI는 새 영수증을 읽을 때만 자동으로 켜지고 다 읽으면 꺼진다.
 - 홈 → 새 정산 → 올리기 → 읽은 값 확인 → 판정 검토 → 서류 완성 순서.
 - 일비·식비는 여행일수(시작~종료 포함) × 일액. 확정 전 자동 제안 기간은 왕복 교통 영수증이나 숙박 체크인·체크아웃이 있을 때만 지급한다. 담당자 정액 판정은 `trip.yaml`의 `allowance_decisions: {일비|식비|근무지 내 출장 여비: {days 또는 amount, reason}}` — 사용자가 일수·금액과 사유를 명시했을 때만 기록한다.
@@ -31,7 +32,7 @@ description: data/<출장자>/<출장>/ 폴더의 영수증을 로컬 Qwen3-VL�
 - 출장 시작일에 시행되던 규정을 갖고 있으면 그 규정으로, 없으면 현행 규정으로 판정하고 안내만 붙인다.
 
 ## 절차
-1. VLM은 미리 켜지 않는다: `run`이 새 영수증을 읽어야 할 때만 `scripts/start_vlm.sh`로 켜고 끝나면 끈다. 영수증이 많으면 직접 `VLM_PARALLEL=4 bash scripts/start_vlm.sh &`로 켜고 `--workers 4`를 쓴 뒤, 끝나면 그 서버를 꼭 끈다.
+1. VLM은 미리 켜지 않는다: `run`이 새 영수증을 읽어야 할 때만 `scripts/start_vlm.sh`로 켜고 끝나면 끈다. 영수증이 많으면 직접 `VLM_PARALLEL=4 bash scripts/start_vlm.sh &`(Windows: `VLM_PARALLEL=4` 설정 후 `uv run receipt-evidence vlm`)로 켜고 `--workers 4`를 쓴 뒤, 끝나면 그 서버를 꼭 끈다.
 2. 영수증이 `data/` 루트나 출장자 폴더에 바로 있으면 어느 출장자·출장인지 **사용자에게 묻고 확인을 받은 뒤** 폴더로 옮긴다. 임의로 옮기지 않는다.
 3. `traveler.yaml`이 없으면 사용자에게 여비 구분(제1호/제2호)·근무지·결재선을 묻고 `examples/traveler.yaml`을 복사해 채운다. 답이 없으면 비워 둔다.
 4. 실행: `uv run receipt-evidence run` (특정 대상만: `--traveler 정백철 --trip 2026-07-09_서울`).

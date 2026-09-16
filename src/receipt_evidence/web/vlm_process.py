@@ -3,14 +3,20 @@ from __future__ import annotations
 import subprocess, time
 from collections.abc import Callable
 from pathlib import Path
+from .. import vlm_server
 
 class VlmManager:
-    def __init__(self, health: Callable[[], bool], start_cmd: list[str], cwd: Path, popen=subprocess.Popen,
-                 sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic):
+    """start_cmd는 명령 목록 또는 켤 때 명령을 만드는 함수(모델·실행 파일이 없으면 그때 사유를 알린다).
+    launch를 주면 popen 대신 그것으로 띄운다(로그 파일·Windows 자식 프로세스 정리)."""
+
+    def __init__(self, health: Callable[[], bool], start_cmd: list[str] | Callable[[], list[str]], cwd: Path, popen=subprocess.Popen,
+                 sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic,
+                 launch: Callable[[list[str]], object] | None = None):
         self.health = health
-        self.start_cmd = list(start_cmd)
+        self.start_cmd = start_cmd if callable(start_cmd) else list(start_cmd)
         self.cwd = Path(cwd)
         self.popen = popen
+        self.launch = launch
         self._sleep = sleep
         self._clock = clock
         self._proc = None
@@ -23,12 +29,20 @@ class VlmManager:
             return "ready"
         return "starting" if self._alive() else "stopped"
 
+    def _start(self):
+        try:
+            cmd = self.start_cmd() if callable(self.start_cmd) else self.start_cmd
+        except vlm_server.VlmSetupError as e:
+            raise RuntimeError(f"로컬 AI를 켤 수 없어요: {e}") from None
+        if self.launch is not None:
+            return self.launch(cmd)
+        return self.popen(cmd, cwd=str(self.cwd), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
     def ensure_ready(self, timeout: float = 180.0, poll: float = 1.0) -> None:
         if self.health():
             return  # 이미 떠 있는 서버(직접 켠 것 포함)는 그대로 쓴다
         if not self._alive():
-            self._proc = self.popen(self.start_cmd, cwd=str(self.cwd), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                    start_new_session=True)
+            self._proc = self._start()
         deadline = self._clock() + timeout
         while self._clock() < deadline:
             if self._proc is None or self._proc.poll() is not None:
@@ -42,18 +56,14 @@ class VlmManager:
 
     def stop(self) -> None:
         proc, self._proc = self._proc, None
-        if proc is None or proc.poll() is not None:
-            return
-        proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except Exception:
-            proc.kill()
+        vlm_server.stop(proc)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = vlm_server.PROJECT_ROOT
 
 def default_vlm_manager(vlm_url: str = "http://127.0.0.1:8088") -> VlmManager:
-    """scripts/start_vlm.sh 로 필요할 때만 띄우는 기본 관리자. 상태 확인은 짧은 타임아웃으로."""
+    """vlm_url의 포트로 llama-server를 필요할 때만 띄우는 기본 관리자(맥·윈도우 공통). 상태 확인은 짧은 타임아웃으로."""
     from ..vlm import LlamaServerClient
     health = LlamaServerClient(vlm_url, timeout=2.0).healthy
-    return VlmManager(health=health, start_cmd=["bash", str(PROJECT_ROOT / "scripts" / "start_vlm.sh")], cwd=PROJECT_ROOT)
+    port = vlm_server.port_of(vlm_url)
+    return VlmManager(health=health, start_cmd=lambda: vlm_server.command(port), cwd=PROJECT_ROOT,
+                      launch=lambda cmd: vlm_server.spawn(cmd, cwd=PROJECT_ROOT))

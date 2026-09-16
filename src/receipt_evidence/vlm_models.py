@@ -32,7 +32,12 @@ VARIANTS: dict[str, VlmVariant] = {
 }
 
 def hf_hub() -> Path:
-    return Path(os.environ.get("HF_HUB_CACHE") or Path.home() / ".cache" / "huggingface" / "hub")
+    """hf download이 쓰는 캐시 위치와 같게: HF_HUB_CACHE → HF_HOME/hub → ~/.cache/huggingface/hub (Windows는 %USERPROFILE% 아래)."""
+    if os.environ.get("HF_HUB_CACHE"):
+        return Path(os.environ["HF_HUB_CACHE"])
+    if os.environ.get("HF_HOME"):
+        return Path(os.environ["HF_HOME"]) / "hub"
+    return Path.home() / ".cache" / "huggingface" / "hub"
 
 def current() -> VlmVariant:
     key = os.environ.get("VLM_VARIANT", DEFAULT_VARIANT).strip().lower() or DEFAULT_VARIANT

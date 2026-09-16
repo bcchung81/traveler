@@ -1,7 +1,7 @@
 # tests/test_workspace.py
 import unicodedata
 from datetime import date, datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import yaml
 from receipt_evidence.models import Category, Receipt
 from receipt_evidence.workspace import (TripJob, apply_overrides, discover, dump_trip_yaml, load_overrides, load_traveler,
@@ -241,3 +241,14 @@ def test_restore_with_same_name_goes_to_suffix_and_fixes_paths(tmp_path):
     assert m["source_path"] == str(data / "정백철" / "2026-07-09_서울_2" / "k.png") and (d / "new.png").exists()
     with pytest.raises(NotFound):
         restore_trip(data, out, "20990101-000000_없음_x")
+
+def test_rewrite_work_paths_handles_windows_backslash_paths_in_json(tmp_path):
+    # Windows 경로(data\정백철\_새정산-…)는 JSON에 역슬래시가 이스케이프되어(\\) 적힌다 — 그 꼴도 새 경로로 바꾼다
+    from receipt_evidence.workspace import _rewrite_work_paths
+    trip_out = tmp_path / "out"; (trip_out / "work").mkdir(parents=True)
+    old, new = PureWindowsPath(r"data\정백철\_새정산-20260913-223105"), PureWindowsPath(r"data\정백철\2026-07-09_서울")
+    (trip_out / "work" / "manifest.json").write_text(json.dumps([{"source_path": str(old / "k.png")}], ensure_ascii=False), encoding="utf-8")
+    (trip_out / "work" / "trip.yaml").write_text(f"image: {old}\\k.png\n", encoding="utf-8")
+    _rewrite_work_paths(trip_out, [(old, new)])
+    assert json.loads((trip_out / "work" / "manifest.json").read_text(encoding="utf-8"))[0]["source_path"] == str(new / "k.png")
+    assert (trip_out / "work" / "trip.yaml").read_text(encoding="utf-8") == f"image: {new}\\k.png\n"

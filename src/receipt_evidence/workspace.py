@@ -1,6 +1,6 @@
 # src/receipt_evidence/workspace.py
 from __future__ import annotations
-import fcntl, json, os, re, shutil, threading, unicodedata
+import json, os, re, shutil, threading, unicodedata
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -24,20 +24,45 @@ class NotFound(LookupError):
 class BusyError(RuntimeError):
     """같은 out/ 폴더에서 다른 정산 작업(CLI 또는 웹)이 이미 돌고 있음."""
 
+if os.name == "nt":
+    import msvcrt
+
+    def _try_lock(f) -> bool:
+        f.seek(0)
+        try:
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)  # 파일 핸들마다 잠기므로 같은 프로세스 안에서도 두 번째는 실패한다
+            return True
+        except OSError:
+            return False
+
+    def _unlock(f) -> None:
+        f.seek(0)
+        msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+else:
+    import fcntl
+
+    def _try_lock(f) -> bool:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            return False
+
+    def _unlock(f) -> None:
+        fcntl.flock(f, fcntl.LOCK_UN)
+
 @contextmanager
 def out_lock(out_dir: Path) -> Iterator[None]:
-    """out/ 쓰기 작업을 프로세스 사이에서 하나만 돌게 한다. 기다리지 않고 바로 알린다."""
+    """out/ 쓰기 작업을 프로세스 사이에서 하나만 돌게 한다. 기다리지 않고 바로 알린다(맥·리눅스 flock, Windows msvcrt)."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    f = open(out_dir / ".lock", "w")
-    try:
-        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
+    f = open(out_dir / ".lock", "a")  # 비우지 않고 연다(Windows에서 남이 잠근 파일을 자르지 않게)
+    if not _try_lock(f):
         f.close()
-        raise BusyError("다른 정산 작업(CLI 또는 웹)이 실행 중이에요. 끝난 뒤 다시 실행해 주세요") from None
+        raise BusyError("다른 정산 작업(CLI 또는 웹)이 실행 중이에요. 끝난 뒤 다시 실행해 주세요")
     try:
         yield
     finally:
-        fcntl.flock(f, fcntl.LOCK_UN)
+        _unlock(f)
         f.close()
 
 class HashCache:
@@ -308,9 +333,10 @@ def was_auto_named(out_dir: Path, traveler: str, trip_id: str) -> bool:
     return trip_id in {v for k, v in _read_renames(out_dir).items() if k.startswith(f"{traveler}/")}
 
 def _rewrite_work_paths(trip_out: Path, moves: list[tuple[Path, Path]]) -> None:
-    """out/<출장자>/<출장>/work 안 JSON·yaml의 옛 절대경로를 새 경로로 바꾼다(NFC·NFD 모두)."""
+    """out/<출장자>/<출장>/work 안 JSON·yaml의 옛 경로를 새 경로로 바꾼다(NFC·NFD, JSON에 이스케이프되어 적힌 Windows 역슬래시 경로 모두)."""
     pairs = [(str(a), str(b)) for a, b in moves]
     pairs += [(unicodedata.normalize("NFD", a), unicodedata.normalize("NFD", b)) for a, b in pairs]
+    pairs += [(json.dumps(a, ensure_ascii=False)[1:-1], json.dumps(b, ensure_ascii=False)[1:-1]) for a, b in pairs if "\\" in a]
     for f in list((trip_out / "work").glob("*.json")) + list((trip_out / "work").glob("*.yaml")):
         text = f.read_text(encoding="utf-8")
         new_text = text

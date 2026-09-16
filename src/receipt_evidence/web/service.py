@@ -1,6 +1,6 @@
 """웹앱이 data/·out/ 폴더 계약을 읽고 쓰는 계층. 경로 성분은 모두 검증해 data/·out/ 밖으로 나가지 못하게 한다."""
 from __future__ import annotations
-import hashlib, json, re
+import hashlib, json, os, re
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -76,9 +76,12 @@ class TripSummary:
     staging: bool = False
     display_name: str = ""
 
+# Windows 파일 이름에 쓸 수 없는 문자(폴더를 못 만들어 500 오류가 나지 않게 미리 거른다)
+_BAD_NAME_CHARS = "/\\\x00" + ('<>:"|?*' if os.name == "nt" else "")
+
 def _name(value: object) -> str:
     s = nfc(str(value)).strip()
-    if not s or len(s) > 60 or any(c in s for c in "/\\\x00") or s.startswith("."):
+    if not s or len(s) > 60 or any(c in s for c in _BAD_NAME_CHARS) or s.startswith(".") or (os.name == "nt" and s.endswith(".")):
         raise InvalidName(f"사용할 수 없는 이름: {value!r}")
     return s
 

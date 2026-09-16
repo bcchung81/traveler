@@ -173,7 +173,7 @@ def _ensure_vlm(images: list[ReceiptImage], cache: ExtractCache, clients: Client
         on_vlm_needed()
         if clients.vlm.healthy():
             return
-    raise RuntimeError("llama-server가 응답하지 않음. scripts/start_vlm.sh 로 기동하세요")
+    raise RuntimeError("llama-server가 응답하지 않음. receipt-evidence vlm(맥·리눅스: scripts/start_vlm.sh)으로 기동하세요")
 
 def find_job(data_dir: Path, traveler: str, trip_id: str) -> TripJob:
     jobs, _ = discover(data_dir, [traveler], [trip_id])

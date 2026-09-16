@@ -1,10 +1,22 @@
-out/
+# 개인 영수증·결과물 — 저장소에 올리지 않는다
 data/
-.venv/
+out/
 *.hwpx
+
+# 실행 기록·내려받은 도구
+.run/
+tools/
+
+# 파이썬
+.venv/
 __pycache__/
 .pytest_cache/
 *.egg-info/
+
+# OS·편집기
 .DS_Store
-design/receipt-evidence-ui/receipt-evidence-screen.html
-.run/
+Thumbs.db
+.claude/scheduled_tasks.lock
+
+# 용량이 큰 화면 시안 내보내기
+docs/design/receipt-evidence-ui/receipt-evidence-screen.html

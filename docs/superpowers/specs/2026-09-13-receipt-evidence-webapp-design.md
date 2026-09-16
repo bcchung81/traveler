@@ -1,6 +1,6 @@
 # 여비정산 증빙 웹앱 (C안) — 설계 문서
 
-작성일 2026-09-13 / 기반: 코어 설계 `2026-09-13-receipt-evidence-design.md`(v2), 화면 시안 `design/receipt-evidence-ui/`(C안 코믹 패널)
+작성일 2026-09-13 / 기반: 코어 설계 `2026-09-13-receipt-evidence-design.md`(v2), 화면 시안 `docs/design/receipt-evidence-ui/`(C안 코믹 패널)
 
 ## 0. 확정된 결정 (Q&A)
 
