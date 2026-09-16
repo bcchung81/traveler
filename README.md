@@ -6,6 +6,7 @@
 - [Windows에서 시작하기](#windows에서-시작하기) — 설정 파일 더블클릭 → 실행 파일 더블클릭
 - [macOS·Linux에서 시작하기](#macoslinux에서-시작하기)
 - [사용법](#사용법) · [인터넷 없이 쓰기](#인터넷-없이-쓰기) · [폴더 구조](#폴더-구조) · [테스트](#테스트)
+- 이 앱처럼 직접 만들어 보려면 → **[바이브코딩 따라하기](docs/vibe-coding-quickstart.md)** — Claude Code 설치 · MCP · 스킬 (1페이지, 15분)
 
 ---
 
@@ -176,7 +177,7 @@ run-app.sh · scripts/start_vlm.sh    macOS·Linux 실행
 src/receipt_evidence/                앱 코드 (cli.py 명령, web/ 웹앱, vlm_server.py 로컬 AI 실행)
 tests/                               단위·통합 테스트
 examples/                            traveler.yaml·trip.yaml·overrides.yaml 예시
-docs/                                설계·계획 문서, 화면 시안(docs/design)
+docs/                                바이브코딩 따라하기, 설계·계획 문서, 화면 시안(docs/design)
 data/ · out/                         내 영수증·결과물 (git에 올라가지 않음)
 tools/llama.cpp/                     Windows 설정이 내려받는 llama.cpp (git에 올라가지 않음)
 ```
